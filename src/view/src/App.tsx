@@ -10,6 +10,11 @@ function App() {
   const [rejection, setRejection] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [activeDocId, setActiveDocId] = useState<string | null>(null)
+
+  function toggleDoc(id: string) {
+    setActiveDocId((current) => (current === id ? null : id))
+  }
 
   async function handleFiles(files: File[]) {
     for (const file of files) {
@@ -28,6 +33,7 @@ function App() {
       try {
         const doc = await uploadDocument(file)
         setDocs((prev) => prev.map((d) => (d.id === tempId ? doc : d)))
+        setActiveDocId(doc.id) // new paper becomes the focus of the chat
       } catch {
         setDocs((prev) => prev.map((d) => (d.id === tempId ? { ...d, status: 'error' } : d)))
       }
@@ -50,7 +56,7 @@ function App() {
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m)),
         )
-      })
+      }, activeDocId ?? undefined)
     } catch (err) {
       const note = err instanceof Error ? err.message : String(err)
       setMessages((prev) =>
@@ -65,8 +71,19 @@ function App() {
 
   return (
     <div className="app">
-      <UploadPanel docs={docs} rejection={rejection} onFiles={handleFiles} />
-      <ChatPanel messages={messages} isStreaming={isStreaming} onSend={handleSend} />
+      <UploadPanel
+        docs={docs}
+        rejection={rejection}
+        activeDocId={activeDocId}
+        onFiles={handleFiles}
+        onToggleDoc={toggleDoc}
+      />
+      <ChatPanel
+        messages={messages}
+        isStreaming={isStreaming}
+        focusLabel={activeDocId ? docs.find((d) => d.id === activeDocId)?.name : undefined}
+        onSend={handleSend}
+      />
     </div>
   )
 }

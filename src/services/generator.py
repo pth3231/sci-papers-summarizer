@@ -63,6 +63,12 @@ async def stream_answer(system_prompt: str, user_prompt: str) -> AsyncIterator[s
                 data = line[len("data: ") :]
                 if data == "[DONE]":
                     break
-                delta = json.loads(data)["choices"][0]["delta"].get("content")
+                event = json.loads(data)
+                # OpenRouter appends annotation events (usage stats) with an
+                # empty choices list — skip them instead of indexing [0].
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta", {}).get("content")
                 if delta:
                     yield delta
