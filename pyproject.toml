@@ -1,0 +1,19 @@
+[project]
+name = "sci-papers-summarizer"
+version = "0.1.0"
+description = "RAG-based scientific paper summarizer (FastAPI + ChromaDB + OpenRouter)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "pypdf>=4.0",
+    "python-dotenv>=1.0",
+]
+
+[tool.uv]
+# Dependency manifest only — the app is run directly, not installed as a package.
+package = false

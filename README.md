@@ -9,6 +9,22 @@ During the senior thesis or relating works that requires an intensive amount of 
 - Phan Thai Hoa
 - Davian
 
+## How to run
+
+### Dev workflow
+```bash
+cd src/view
+npm run dev
+cd ..
+uv run fastapi dev # Access through the assigned port
+```
+
+### Production workflow
+```bash
+cd src/view && npm run build
+dist/cd ../.. && src/.venv/bin/python -m uvicorn src.main:src --port 8000
+```
+
 ## High-level Design
 
 ![high level design](assets/image.png)
