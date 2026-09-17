@@ -4,7 +4,9 @@ import type { DocMeta } from '../types'
 interface UploadPanelProps {
   docs: DocMeta[]
   rejection: string | null
+  activeDocId: string | null
   onFiles: (files: File[]) => void
+  onToggleDoc: (id: string) => void
 }
 
 function formatSize(bytes: number): string {
@@ -19,7 +21,7 @@ const STATUS_LABEL: Record<DocMeta['status'], string> = {
   error: 'error',
 }
 
-export function UploadPanel({ docs, rejection, onFiles }: UploadPanelProps) {
+export function UploadPanel({ docs, rejection, activeDocId, onFiles, onToggleDoc }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
@@ -63,9 +65,22 @@ export function UploadPanel({ docs, rejection, onFiles }: UploadPanelProps) {
 
       {rejection && <p className="rejection">{rejection}</p>}
 
+      {docs.length > 0 && (
+        <p className="focus-hint">Click a paper to focus the chat on it — click again to search all.</p>
+      )}
+
       <ul className="doc-list">
         {docs.map((doc) => (
-          <li key={doc.id} className="doc-item">
+          <li
+            key={doc.id}
+            className={`doc-item${doc.id === activeDocId ? ' active' : ''}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => onToggleDoc(doc.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') onToggleDoc(doc.id)
+            }}
+          >
             <span className="doc-name" title={doc.name}>
               {doc.name}
             </span>

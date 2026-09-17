@@ -76,6 +76,24 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.doc-item:hover,
+.doc-item:focus-visible {
+  border-color: var(--accent);
+}
+
+.doc-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.focus-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .doc-name {
@@ -262,10 +280,27 @@
 
 .composer {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.focus-label {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.focus-label.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.composer-row {
+  display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
 }
 
 .composer textarea {

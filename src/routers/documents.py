@@ -44,7 +44,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     for chunk in chunks:
         embedding = embed_text(chunk.text)
-        add_chunk(chunk_id=chunk.chunk_id, text=chunk.text, embedding=embedding, document_id=chunk.document_id, chunk_index=chunk.chunk_index)
+        add_chunk(chunk_id=chunk.chunk_id, text=chunk.text, embedding=embedding, document_id=chunk.document_id, chunk_index=chunk.chunk_index, filename=filename)
 
     return {
         "document_id": document_id,

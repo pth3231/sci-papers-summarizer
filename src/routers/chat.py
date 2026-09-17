@@ -27,13 +27,20 @@ async def chat(request: ChatRequest):
     except RuntimeError as err:
         raise HTTPException(status_code=503, detail=str(err)) from err
 
-    # Retrieve: embed the question, pull the most similar ingested chunks.
+    # Retrieve: embed the question, pull the most similar ingested chunks —
+    # scoped to the selected document when the client passes a document_id.
     query_embedding = embed_text(request.message)
-    results = search_chunks(query_embedding=query_embedding, top_k=request.top_k)
+    results = search_chunks(
+        query_embedding=query_embedding,
+        top_k=request.top_k,
+        document_id=request.document_id,
+    )
     documents = results["documents"][0] if results["documents"] else []
+    metadatas = results["metadatas"][0] if results["metadatas"] else []
 
     context = "\n\n".join(
-        f"[excerpt {i + 1}] {text}" for i, text in enumerate(documents)
+        f"[excerpt {i + 1} — {meta.get('filename', 'unknown source')}] {text}"
+        for i, (text, meta) in enumerate(zip(documents, metadatas))
     )
     user_prompt = (
         f"Context excerpts:\n{context}\n\nQuestion: {request.message}"
@@ -49,6 +56,8 @@ async def chat(request: ChatRequest):
             # Headers are already sent, so surface upstream failures in-band
             # instead of dropping the connection mid-answer.
             yield f"\n\n[generator error] {err}"
+        except Exception as err:
+            yield f"\n\n[generator error] {type(err).__name__}: {err}"
 
     return StreamingResponse(
         answer_stream(), media_type="text/plain; charset=utf-8"

@@ -40,10 +40,12 @@ export async function uploadDocument(file: File): Promise<DocMeta> {
 }
 
 // POST the latest user message; the backend streams the answer back as a
-// chunked text response. Decode and forward each delta as it arrives.
+// chunked text response. Decode and forward each delta as it arrives. When
+// documentId is given, retrieval is scoped to that one uploaded paper.
 export async function streamChat(
   history: Message[],
   onChunk: (delta: string) => void,
+  documentId?: string,
 ): Promise<void> {
   const message = [...history].reverse().find((m) => m.role === 'user')?.content
   if (!message) return
@@ -51,7 +53,7 @@ export async function streamChat(
   const res = await fetch(`${API_BASE}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, document_id: documentId }),
   })
   if (!res.ok) throw new Error(await errorMessage(res))
   if (!res.body) throw new Error('response has no body to stream')

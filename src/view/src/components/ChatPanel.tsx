@@ -7,10 +7,12 @@ import type { Message } from '../types'
 interface ChatPanelProps {
   messages: Message[]
   isStreaming: boolean
+  /** Filename of the paper the chat is scoped to, if any. */
+  focusLabel?: string
   onSend: (text: string) => void
 }
 
-export function ChatPanel({ messages, isStreaming, onSend }: ChatPanelProps) {
+export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -50,21 +52,26 @@ export function ChatPanel({ messages, isStreaming, onSend }: ChatPanelProps) {
       </div>
 
       <div className="composer">
-        <textarea
-          value={input}
-          rows={2}
-          placeholder="Ask about the uploaded papers…"
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-        />
-        <button type="button" onClick={submit} disabled={isStreaming || !input.trim()}>
-          {isStreaming ? 'Streaming…' : 'Send'}
-        </button>
+        <div className={`focus-label${focusLabel === undefined ? ' muted' : ''}`}>
+          {focusLabel === undefined ? 'Asking about: all papers' : `Asking about: ${focusLabel}`}
+        </div>
+        <div className="composer-row">
+          <textarea
+            value={input}
+            rows={2}
+            placeholder="Ask about the uploaded papers…"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+          />
+          <button type="button" onClick={submit} disabled={isStreaming || !input.trim()}>
+            {isStreaming ? 'Streaming…' : 'Send'}
+          </button>
+        </div>
       </div>
     </section>
   )
