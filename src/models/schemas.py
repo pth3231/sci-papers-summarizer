@@ -20,3 +20,15 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[SearchResult]
+
+class DocumentMeta(BaseModel):
+    id: str
+    filename: str
+    size_bytes: int
+    status: str
+    chunk_count: int
+    error_message: str | None = None
+    created_at: str
+
+class DocumentsListResponse(BaseModel):
+    documents: list[DocumentMeta]
