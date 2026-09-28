@@ -47,6 +47,19 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
               msg.content
             )}
             {msg.id === streamingId && <span className="stream-cursor" />}
+            {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+              <div className="sources-block">
+                <p className="sources-title">Sources</p>
+                <ul className="sources-list">
+                  {msg.sources.map((source, index) => (
+                    <li key={index} className="source-item">
+                      <span className="source-filename">{source.filename}</span>
+                      <span className="source-excerpt">{source.excerpt}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ))}
       </div>
