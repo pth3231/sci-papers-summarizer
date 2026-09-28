@@ -21,7 +21,7 @@ ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
 @router.post("/")
 async def upload_document(file: UploadFile = File(...)):
-    filename = file.filename or "document"
+    filename = Path(file.filename or "document").name
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
