@@ -334,3 +334,44 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.doc-check .doc-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-delete {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.doc-delete:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.doc-error {
+  font-size: 0.75rem;
+  color: var(--danger);
+}

@@ -3,10 +3,11 @@ import type { DocMeta } from '../types'
 
 interface UploadPanelProps {
   docs: DocMeta[]
-  rejection: string | null
-  activeDocId: string | null
+  notice: string | null
+  activeDocIds: string[]
   onFiles: (files: File[]) => void
   onToggleDoc: (id: string) => void
+  onDelete: (id: string) => void
 }
 
 function formatSize(bytes: number): string {
@@ -21,7 +22,14 @@ const STATUS_LABEL: Record<DocMeta['status'], string> = {
   error: 'error',
 }
 
-export function UploadPanel({ docs, rejection, activeDocId, onFiles, onToggleDoc }: UploadPanelProps) {
+export function UploadPanel({
+  docs,
+  notice,
+  activeDocIds,
+  onFiles,
+  onToggleDoc,
+  onDelete,
+}: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
@@ -63,32 +71,48 @@ export function UploadPanel({ docs, rejection, activeDocId, onFiles, onToggleDoc
         }}
       />
 
-      {rejection && <p className="rejection">{rejection}</p>}
+      {notice && <p className="rejection">{notice}</p>}
 
       {docs.length > 0 && (
-        <p className="focus-hint">Click a paper to focus the chat on it — click again to search all.</p>
+        <p className="focus-hint">
+          Check papers to scope the chat to them — leave all unchecked to search everything.
+        </p>
       )}
 
       <ul className="doc-list">
         {docs.map((doc) => (
-          <li
-            key={doc.id}
-            className={`doc-item${doc.id === activeDocId ? ' active' : ''}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => onToggleDoc(doc.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') onToggleDoc(doc.id)
-            }}
-          >
-            <span className="doc-name" title={doc.name}>
-              {doc.name}
-            </span>
+          <li key={doc.id} className={`doc-item${activeDocIds.includes(doc.id) ? ' active' : ''}`}>
+            <div className="doc-row">
+              <label className="doc-check">
+                <input
+                  type="checkbox"
+                  checked={activeDocIds.includes(doc.id)}
+                  disabled={doc.status !== 'ready'}
+                  onChange={() => onToggleDoc(doc.id)}
+                />
+                <span className="doc-name" title={doc.name}>
+                  {doc.name}
+                </span>
+              </label>
+              <button
+                type="button"
+                className="doc-delete"
+                aria-label={`Delete ${doc.name}`}
+                onClick={() => {
+                  if (window.confirm(`Delete "${doc.name}"? This removes it and its indexed content.`)) {
+                    onDelete(doc.id)
+                  }
+                }}
+              >
+                ×
+              </button>
+            </div>
             <span className="doc-meta">
               {formatSize(doc.size)}
               {doc.chunks !== undefined && ` · ${doc.chunks} chunks`}
               <span className={`status-chip ${doc.status}`}>{STATUS_LABEL[doc.status]}</span>
             </span>
+            {doc.error && <span className="doc-error">{doc.error}</span>}
           </li>
         ))}
       </ul>
