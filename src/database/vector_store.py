@@ -14,10 +14,13 @@ def add_chunk(chunk_id: str, text: str, embedding: list[float], document_id: str
         metadatas=[metadata],
     )
 
-def search_chunks(query_embedding: list[float], top_k: int = 5, document_id: str | None = None):
+def search_chunks(query_embedding: list[float], top_k: int = 5, document_ids: list[str] | None = None):
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        where={"document_id": document_id} if document_id else None,
+        where={"document_id": {"$in": document_ids}} if document_ids else None,
     )
     return results
+
+def delete_chunks(document_id: str):
+    collection.delete(where={"document_id": document_id})

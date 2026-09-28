@@ -10,7 +10,11 @@ router = APIRouter(prefix="/search", tags=["Search"])
 def search(request: SearchRequest):
     query_embedding = embed_text(request.query)
 
-    results = search_chunks(query_embedding=query_embedding, top_k=request.top_k)
+    results = search_chunks(
+        query_embedding=query_embedding,
+        top_k=request.top_k,
+        document_ids=request.document_ids,
+    )
 
     search_results = []
 
