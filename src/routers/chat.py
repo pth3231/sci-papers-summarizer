@@ -1,3 +1,5 @@
+import json
+
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -18,6 +20,10 @@ SYSTEM_PROMPT = (
     "Prefer concise bullet points."
 )
 
+# Excerpts in the X-Sources header are for display only, not re-parsed for
+# grounding, so a short preview is enough.
+SOURCE_EXCERPT_LENGTH = 200
+
 
 @router.post("/")
 async def chat(request: ChatRequest):
@@ -28,12 +34,12 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=503, detail=str(err)) from err
 
     # Retrieve: embed the question, pull the most similar ingested chunks —
-    # scoped to the selected document when the client passes a document_id.
+    # scoped to the selected documents when the client passes document_ids.
     query_embedding = embed_text(request.message)
     results = search_chunks(
         query_embedding=query_embedding,
         top_k=request.top_k,
-        document_id=request.document_id,
+        document_ids=request.document_ids,
     )
     documents = results["documents"][0] if results["documents"] else []
     metadatas = results["metadatas"][0] if results["metadatas"] else []
@@ -48,6 +54,16 @@ async def chat(request: ChatRequest):
         else request.message
     )
 
+    # Retrieval already ran, so sources are known before generation starts —
+    # send them as a header rather than changing the streamed body format.
+    sources = [
+        {
+            "filename": meta.get("filename", "unknown source"),
+            "excerpt": text[:SOURCE_EXCERPT_LENGTH],
+        }
+        for text, meta in zip(documents, metadatas)
+    ]
+
     async def answer_stream():
         try:
             async for delta in stream_answer(SYSTEM_PROMPT, user_prompt):
@@ -60,5 +76,7 @@ async def chat(request: ChatRequest):
             yield f"\n\n[generator error] {type(err).__name__}: {err}"
 
     return StreamingResponse(
-        answer_stream(), media_type="text/plain; charset=utf-8"
+        answer_stream(),
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Sources": json.dumps(sources)},
     )

@@ -15,7 +15,7 @@ class SearchResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     top_k: int = 5
-    document_id: str | None = None
+    document_ids: list[str] | None = None
 
 class ChatResponse(BaseModel):
     answer: str
