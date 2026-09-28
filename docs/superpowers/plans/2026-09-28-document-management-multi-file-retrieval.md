@@ -18,6 +18,7 @@
 - Source excerpts are display-only, truncated to 200 characters — never re-parsed for grounding.
 - CORS must add `expose_headers=["X-Sources"]` or browsers will hide the header from cross-origin `fetch` calls in dev.
 - **No automated test framework this round** (explicit decision, see spec's Non-goals). Every task instead has a manual verification step using `fastapi.testclient.TestClient` in an ad-hoc script (no test files created) or, for frontend/UI behavior, a real browser check. Backend verification scripts run with cwd at `src/` (the directory containing `pyproject.toml`), matching how `vector_store.py`'s `./chroma_db` and `documents.py`'s `uploads` already resolve relative to the process's working directory at runtime.
+- **There are two `pyproject.toml` files** — one at the repo root (`package = false`, "run directly") and one inside `src/` (the one with the real `.venv`, actually used to run this app — confirmed by `uv run fastapi dev` from `src/` auto-discovering `src.main:src` and serving successfully). `uv run fastapi dev`/`fastapi run` do their own package-root sys.path detection, so they work unmodified from `src/`. A bare `uv run python -c "..."` does **not** do that detection, so every verification script in this plan starts with `import sys; sys.path.insert(0, '..')` before any `from src...` import — this is required, not optional; omitting it fails with `ModuleNotFoundError: No module named 'src'`.
 - Spec reference: `docs/superpowers/specs/2026-09-28-document-management-multi-file-retrieval-design.md`.
 
 ---
@@ -132,6 +133,9 @@ Run from the `src/` directory (where `pyproject.toml` and the venv live):
 ```bash
 cd src
 uv run python -c "
+import sys
+sys.path.insert(0, '..')
+
 from src.database import document_store as ds
 
 ds.add_document('test-doc-1', 'sample.pdf', 1234, 'ready', chunk_count=3)
@@ -248,6 +252,9 @@ def search(request: SearchRequest):
 ```bash
 cd src
 uv run python -c "
+import sys
+sys.path.insert(0, '..')
+
 from fastapi.testclient import TestClient
 from src.main import src as app
 from src.database import vector_store as vs
@@ -420,6 +427,9 @@ This works without a real OpenRouter key or network access: `require_api_key()` 
 ```bash
 cd src
 uv run python -c "
+import sys
+sys.path.insert(0, '..')
+
 import json
 import os
 os.environ.setdefault('OPENROUTER_API_KEY', 'verification-placeholder')
@@ -635,6 +645,9 @@ def delete_document(document_id: str):
 ```bash
 cd src
 uv run python -c "
+import sys
+sys.path.insert(0, '..')
+
 from fastapi.testclient import TestClient
 from src.main import src as app
 from src.database.vector_store import search_chunks
