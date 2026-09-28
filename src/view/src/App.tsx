@@ -1,30 +1,56 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import { ChatPanel } from './components/ChatPanel'
 import { UploadPanel } from './components/UploadPanel'
-import { isAcceptedFile, streamChat, uploadDocument } from './lib/api'
+import {
+  deleteDocument,
+  isAcceptedFile,
+  listDocuments,
+  streamChat,
+  uploadDocument,
+} from './lib/api'
 import type { DocMeta, Message } from './types'
 
 function App() {
   const [docs, setDocs] = useState<DocMeta[]>([])
-  const [rejection, setRejection] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [activeDocId, setActiveDocId] = useState<string | null>(null)
+  const [activeDocIds, setActiveDocIds] = useState<string[]>([])
+
+  // Backend is the source of truth for the document list, so a reload still
+  // shows previously uploaded papers.
+  useEffect(() => {
+    listDocuments()
+      .then(setDocs)
+      .catch((err) => setNotice(err instanceof Error ? err.message : String(err)))
+  }, [])
 
   function toggleDoc(id: string) {
-    setActiveDocId((current) => (current === id ? null : id))
+    setActiveDocIds((current) =>
+      current.includes(id) ? current.filter((docId) => docId !== id) : [...current, id],
+    )
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteDocument(id)
+      setDocs((prev) => prev.filter((d) => d.id !== id))
+      setActiveDocIds((prev) => prev.filter((docId) => docId !== id))
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : String(err))
+    }
   }
 
   async function handleFiles(files: File[]) {
     for (const file of files) {
       if (!isAcceptedFile(file.name)) {
-        setRejection(`"${file.name}" skipped — only PDF and text files are supported`)
+        setNotice(`"${file.name}" skipped — only PDF and text files are supported`)
         continue
       }
-      setRejection(null)
+      setNotice(null)
 
-      // Optimistic entry; patched once the (mock) upload resolves.
+      // Optimistic entry; replaced once the upload resolves.
       const tempId = crypto.randomUUID()
       setDocs((prev) => [
         ...prev,
@@ -33,9 +59,18 @@ function App() {
       try {
         const doc = await uploadDocument(file)
         setDocs((prev) => prev.map((d) => (d.id === tempId ? doc : d)))
-        setActiveDocId(doc.id) // new paper becomes the focus of the chat
-      } catch {
-        setDocs((prev) => prev.map((d) => (d.id === tempId ? { ...d, status: 'error' } : d)))
+        setActiveDocIds((prev) => [...prev, doc.id]) // new paper joins the current scope
+      } catch (err) {
+        // The backend may still have recorded a failed-upload row (with its
+        // own real id) — drop the optimistic placeholder and refetch so it
+        // shows up instead of silently vanishing.
+        setDocs((prev) => prev.filter((d) => d.id !== tempId))
+        setNotice(err instanceof Error ? err.message : String(err))
+        try {
+          setDocs(await listDocuments())
+        } catch {
+          // Keep whatever we had — the notice above already surfaced the failure.
+        }
       }
     }
   }
@@ -52,11 +87,18 @@ function App() {
     ])
     setIsStreaming(true)
     try {
-      await streamChat(history, (delta) => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m)),
-        )
-      }, activeDocId ?? undefined)
+      const sources = await streamChat(
+        history,
+        (delta) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m)),
+          )
+        },
+        activeDocIds,
+      )
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, sources } : m)),
+      )
     } catch (err) {
       const note = err instanceof Error ? err.message : String(err)
       setMessages((prev) =>
@@ -69,19 +111,24 @@ function App() {
     }
   }
 
+  const selectedNames = docs
+    .filter((d) => activeDocIds.includes(d.id))
+    .map((d) => d.name)
+
   return (
     <div className="app">
       <UploadPanel
         docs={docs}
-        rejection={rejection}
-        activeDocId={activeDocId}
+        notice={notice}
+        activeDocIds={activeDocIds}
         onFiles={handleFiles}
         onToggleDoc={toggleDoc}
+        onDelete={handleDelete}
       />
       <ChatPanel
         messages={messages}
         isStreaming={isStreaming}
-        focusLabel={activeDocId ? docs.find((d) => d.id === activeDocId)?.name : undefined}
+        focusLabel={selectedNames.length > 0 ? selectedNames.join(', ') : undefined}
         onSend={handleSend}
       />
     </div>
