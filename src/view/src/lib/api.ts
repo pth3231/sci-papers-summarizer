@@ -1,4 +1,4 @@
-import type { DocMeta, Message } from '../types'
+import type { DocMeta, Message, SourceExcerpt } from '../types'
 
 // In dev (Vite server on :5173) call the backend origin directly — override
 // the port with VITE_API_URL if 8000 is taken; when the built frontend is
@@ -17,6 +17,7 @@ export function isAcceptedFile(name: string): boolean {
 interface UploadResponse {
   document_id: string
   filename: string
+  size_bytes: number
   chunks: number
 }
 
@@ -33,30 +34,64 @@ export async function uploadDocument(file: File): Promise<DocMeta> {
   return {
     id: data.document_id,
     name: data.filename,
-    size: file.size,
+    size: data.size_bytes,
     chunks: data.chunks,
     status: 'ready',
   }
 }
 
+interface DocumentListEntry {
+  id: string
+  filename: string
+  size_bytes: number
+  status: 'ready' | 'error'
+  chunk_count: number
+  error_message: string | null
+  created_at: string
+}
+
+// GET the backend-authoritative document list — called on mount so a reload
+// still shows previously uploaded papers.
+export async function listDocuments(): Promise<DocMeta[]> {
+  const res = await fetch(`${API_BASE}/documents/`)
+  if (!res.ok) throw new Error(await errorMessage(res))
+
+  const data: { documents: DocumentListEntry[] } = await res.json()
+  return data.documents.map((doc) => ({
+    id: doc.id,
+    name: doc.filename,
+    size: doc.size_bytes,
+    status: doc.status,
+    chunks: doc.chunk_count,
+    error: doc.error_message ?? undefined,
+  }))
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await errorMessage(res))
+}
+
 // POST the latest user message; the backend streams the answer back as a
-// chunked text response. Decode and forward each delta as it arrives. When
-// documentId is given, retrieval is scoped to that one uploaded paper.
+// chunked text response and attaches retrieved sources as a response header.
+// When documentIds is non-empty, retrieval is scoped to just those papers.
 export async function streamChat(
   history: Message[],
   onChunk: (delta: string) => void,
-  documentId?: string,
-): Promise<void> {
+  documentIds: string[] = [],
+): Promise<SourceExcerpt[]> {
   const message = [...history].reverse().find((m) => m.role === 'user')?.content
-  if (!message) return
+  if (!message) return []
 
   const res = await fetch(`${API_BASE}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, document_id: documentId }),
+    body: JSON.stringify({ message, document_ids: documentIds }),
   })
   if (!res.ok) throw new Error(await errorMessage(res))
   if (!res.body) throw new Error('response has no body to stream')
+
+  const sources = parseSources(res.headers.get('X-Sources'))
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -66,6 +101,18 @@ export async function streamChat(
     onChunk(decoder.decode(value, { stream: true }))
   }
   onChunk(decoder.decode()) // flush the decoder's tail
+
+  return sources
+}
+
+function parseSources(header: string | null): SourceExcerpt[] {
+  if (!header) return []
+  try {
+    const parsed = JSON.parse(header)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 async function errorMessage(res: Response): Promise<string> {
