@@ -3,11 +3,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from src.database import document_store
 from src.database.vector_store import add_chunk, delete_chunks
 from src.models.schemas import DocumentMeta, DocumentsListResponse
-from src.services.chunker import chunk_text
+from src.services.chunker import chunk_markdown
 from src.services.embedder import embed_text
 from src.services.parser import parse_file
 
@@ -42,8 +43,9 @@ async def upload_document(file: UploadFile = File(...)):
         buffer.write(contents)
 
     try:
-        text = parse_file(str(file_path))
-        chunks = chunk_text(text=text, document_id=document_id, chunk_size=1000, overlap=200)
+        figures_dir = doc_dir / "figures"
+        parsed = parse_file(str(file_path), figures_dir=str(figures_dir))
+        chunks = chunk_markdown(parsed.markdown, document_id=document_id)
         for chunk in chunks:
             embedding = embed_text(chunk.text)
             add_chunk(
@@ -53,6 +55,9 @@ async def upload_document(file: UploadFile = File(...)):
                 document_id=chunk.document_id,
                 chunk_index=chunk.chunk_index,
                 filename=filename,
+                section=chunk.section,
+                kind=chunk.kind,
+                figure_path=chunk.figure_path,
             )
     except Exception as err:
         # Keep a record of the failed upload (with the reason) instead of
@@ -110,6 +115,15 @@ def get_documents():
             for row in rows
         ]
     )
+
+
+@router.get("/{document_id}/figures/{figure_name}")
+def get_figure(document_id: str, figure_name: str):
+    safe_name = Path(figure_name).name  # strip any path components
+    figure_path = UPLOAD_DIR / document_id / "figures" / safe_name
+    if not figure_path.is_file():
+        raise HTTPException(status_code=404, detail=f"figure '{safe_name}' not found")
+    return FileResponse(figure_path)
 
 
 @router.delete("/{document_id}")
