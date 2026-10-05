@@ -276,6 +276,34 @@
   }
 }
 
+/* Error banner shown when generation fails mid-stream or before it starts */
+
+.message-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.message-error-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--danger);
+}
+
+.message-error-detail {
+  font-size: 0.8rem;
+  color: var(--danger);
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
 .sources-block {
   margin-top: 10px;
   padding-top: 8px;

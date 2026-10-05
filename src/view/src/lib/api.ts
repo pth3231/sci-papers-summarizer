@@ -9,6 +9,11 @@ const API_BASE = import.meta.env.DEV
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.txt']
 
+// Must match GENERATOR_ERROR_SENTINEL in src/routers/chat.py: once the stream
+// has started, the backend reports LLM failures in-band after this marker so
+// we can raise them as errors instead of rendering them as answer text.
+const ERROR_SENTINEL = '---generator-error---'
+
 export function isAcceptedFile(name: string): boolean {
   const lower = name.toLowerCase()
   return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
@@ -95,12 +100,50 @@ export async function streamChat(
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
+  let received = ''
+  let emitted = 0 // chars of `received` already passed to onChunk
+  // Once the sentinel appears, everything after it is the error message —
+  // which may still arrive in later chunks, so buffer until the stream ends
+  // instead of throwing with a partial message.
+  let errorText: string | null = null
+
+  // Returns the (untrimmed) error message when the sentinel is present in
+  // `received`, flushing any withheld content just before it first.
+  const extractError = (): string | null => {
+    const idx = received.indexOf(ERROR_SENTINEL)
+    if (idx === -1) return null
+    if (emitted < idx) onChunk(received.slice(emitted, idx))
+    return received.slice(idx + ERROR_SENTINEL.length)
+  }
+
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    onChunk(decoder.decode(value, { stream: true }))
+    const text = decoder.decode(value, { stream: true })
+    if (errorText !== null) {
+      errorText += text
+      continue
+    }
+    received += text
+    const err = extractError()
+    if (err !== null) {
+      errorText = err
+      continue
+    }
+    // Hold back a tail that could still grow into the sentinel so a marker
+    // split across network chunks never leaks into the answer text.
+    const safeEnd = Math.max(0, received.length - (ERROR_SENTINEL.length - 1))
+    if (safeEnd > emitted) {
+      onChunk(received.slice(emitted, safeEnd))
+      emitted = safeEnd
+    }
   }
-  onChunk(decoder.decode()) // flush the decoder's tail
+  const tail = decoder.decode() // flush the decoder's tail
+  if (errorText !== null) throw new Error((errorText + tail).trim())
+  received += tail
+  const late = extractError() // sentinel completed exactly at stream end
+  if (late !== null) throw new Error(late.trim())
+  if (emitted < received.length) onChunk(received.slice(emitted))
 
   return sources
 }

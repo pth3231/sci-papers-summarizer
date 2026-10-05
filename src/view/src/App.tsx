@@ -103,7 +103,9 @@ function App() {
       const note = err instanceof Error ? err.message : String(err)
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantId ? { ...m, content: `${m.content}\n\n[error] ${note}` } : m,
+          m.id === assistantId
+            ? { ...m, content: m.content.trimEnd(), error: note }
+            : m,
         ),
       )
     } finally {

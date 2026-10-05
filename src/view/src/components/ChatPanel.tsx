@@ -47,6 +47,12 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
               msg.content
             )}
             {msg.id === streamingId && <span className="stream-cursor" />}
+            {msg.role === 'assistant' && msg.error && (
+              <div className="message-error">
+                <span className="message-error-title">Generation failed</span>
+                <span className="message-error-detail">{msg.error}</span>
+              </div>
+            )}
             {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
               <div className="sources-block">
                 <p className="sources-title">Sources</p>

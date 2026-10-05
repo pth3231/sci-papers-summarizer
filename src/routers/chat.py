@@ -24,6 +24,12 @@ SYSTEM_PROMPT = (
 # grounding, so a short preview is enough.
 SOURCE_EXCERPT_LENGTH = 200
 
+# In-band marker for the frontend (ERROR_SENTINEL in src/view/src/lib/api.ts):
+# when generation fails after the stream has started, the response continues
+# with this sentinel so the client can render an error banner instead of
+# mistaking the failure report for answer text.
+GENERATOR_ERROR_SENTINEL = "---generator-error---"
+
 
 @router.post("/")
 async def chat(request: ChatRequest):
@@ -69,11 +75,12 @@ async def chat(request: ChatRequest):
             async for delta in stream_answer(SYSTEM_PROMPT, user_prompt):
                 yield delta
         except httpx.HTTPError as err:
-            # Headers are already sent, so surface upstream failures in-band
-            # instead of dropping the connection mid-answer.
-            yield f"\n\n[generator error] {err}"
+            # Headers are already sent, so report upstream failures in-band —
+            # flagged with the sentinel — instead of dropping the connection
+            # mid-answer.
+            yield f"\n{GENERATOR_ERROR_SENTINEL}\n{err}"
         except Exception as err:
-            yield f"\n\n[generator error] {type(err).__name__}: {err}"
+            yield f"\n{GENERATOR_ERROR_SENTINEL}\n{type(err).__name__}: {err}"
 
     return StreamingResponse(
         answer_stream(),

@@ -10,6 +10,8 @@ export interface Message {
   role: Role
   content: string
   sources?: SourceExcerpt[]
+  /** Set when generation failed — rendered as an error banner, not answer text. */
+  error?: string
 }
 
 export type DocStatus = 'uploading' | 'ready' | 'error'
