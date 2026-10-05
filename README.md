@@ -19,6 +19,14 @@ cd ..
 uv run fastapi dev # Access through the assigned port
 ```
 
+### Environment variables
+
+Set these in `.env` at the repo root (gitignored):
+
+- `LLM_API_KEY` — Z.ai API key (required)
+- `LLM_MODEL` — model name (default `glm-4.6`)
+- `LLM_BASE_URL` — any OpenAI-compatible endpoint (default `https://api.z.ai/api/paas/v4`)
+
 ### Production workflow
 ```bash
 cd src/view && npm run build
@@ -48,6 +56,6 @@ dist/cd ../.. && src/.venv/bin/python -m uvicorn src.main:src --port 8000
 
 ## References:
 
-- Model: https://openrouter.ai/google/gemma-4-26b-a4b-it:free#providers
+- Model: GLM via Z.ai's OpenAI-compatible API — https://z.ai/model-list
 - Converter: https://github.com/datalab-to/marker
 - https://martinuke0.github.io/posts/2026-01-06-mastering-rag-pipelines-a-comprehensive-guide-to-retrieval-augmented-generation/#3-generator-augmentation-and-llm

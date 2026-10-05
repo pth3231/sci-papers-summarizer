@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env before anything that reads environment variables at import time
-# (src.services.generator reads OPENROUTER_BASE_URL on import). Real
+# (src.services.generator reads LLM_BASE_URL on import). Real
 # environment variables keep precedence over .env values.
 load_dotenv()
 

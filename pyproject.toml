@@ -1,7 +1,7 @@
 [project]
 name = "sci-papers-summarizer"
 version = "0.1.0"
-description = "RAG-based scientific paper summarizer (FastAPI + ChromaDB + OpenRouter)"
+description = "RAG-based scientific paper summarizer (FastAPI + ChromaDB + Z.ai GLM)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

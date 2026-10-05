@@ -4,21 +4,21 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
-BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+MODEL = os.environ.get("LLM_MODEL", "glm-4.6")
+BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.z.ai/api/paas/v4")
 
 
 def require_api_key() -> str:
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = os.environ.get("LLM_API_KEY")
     if not key:
-        raise RuntimeError("OPENROUTER_API_KEY is not set")
+        raise RuntimeError("LLM_API_KEY is not set")
     return key
 
 
 async def stream_answer(system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
-    """Stream the model's answer from OpenRouter, yielding content deltas.
+    """Stream the model's answer from the LLM provider, yielding content deltas.
 
-    OpenRouter sends Server-Sent Events: one `data: {...}` line per delta and a
+    The provider sends Server-Sent Events: one `data: {...}` line per delta and a
     final `data: [DONE]` sentinel. We decode just the text content of each
     chunk so callers can consume a plain stream of string deltas.
     """
@@ -37,13 +37,13 @@ async def stream_answer(system_prompt: str, user_prompt: str) -> AsyncIterator[s
             },
         ) as response:
             if response.is_error:
-                # Keep OpenRouter's explanation (rate limits, bad key, model
+                # Keep the provider's explanation (rate limits, bad key, model
                 # issues) instead of a bare status code.
                 body = (await response.aread()).decode(errors="replace")
                 try:
                     error = json.loads(body).get("error", {})
-                    # metadata.raw carries the actionable upstream message
-                    # (e.g. "rate-limited upstream, retry shortly").
+                    # metadata.raw (OpenRouter) or error.message (Z.ai) carry
+                    # the actionable upstream message (e.g. rate limits).
                     detail = (
                         error.get("metadata", {}).get("raw")
                         or error.get("message")
@@ -64,7 +64,7 @@ async def stream_answer(system_prompt: str, user_prompt: str) -> AsyncIterator[s
                 if data == "[DONE]":
                     break
                 event = json.loads(data)
-                # OpenRouter appends annotation events (usage stats) with an
+                # Providers append annotation events (usage stats) with an
                 # empty choices list — skip them instead of indexing [0].
                 choices = event.get("choices") or []
                 if not choices:
