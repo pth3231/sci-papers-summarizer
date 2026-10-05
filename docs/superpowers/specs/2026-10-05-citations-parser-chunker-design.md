@@ -1,7 +1,8 @@
 # Design: Marker-Based Ingestion + Validated Citations
 
 Date: 2026-10-05
-Status: approved (pending spec review)
+Status: approved (user review passed 2026-10-05; LaTeX display engine added
+per user request at approval)
 
 ## Problem
 
@@ -110,6 +111,12 @@ collection — retrieval returns nothing for them, so delete old rows via the UI
 
 ### Frontend
 
+- **LaTeX display engine:** add `remark-math` + `rehype-katex` (+ bundled
+  KaTeX CSS/fonts) to the existing `react-markdown` pipeline, so `$…$` /
+  `$$…$$` math renders wherever markdown renders — streamed answers (GLM
+  quotes equations from the marker-converted context), source excerpts, and
+  chunk previews. KaTeX over MathJax: synchronous, bundle-friendly, no
+  client-side font jank while streaming.
 - After the stream completes, extract `[n]` markers from the final message
   (regex adequate given the instruction; markdown-link collisions excluded by
   requiring the no-`(` lookahead).
