@@ -100,8 +100,26 @@ def chunk_markdown(
         if figure_path is not None:
             # Figures stand alone so the caption chunk is never merged into prose.
             flush()
-            buffer.append((text, figure_path))
-            flush()
+            if len(text) <= max_size:
+                buffer.append((text, figure_path))
+                flush()
+                continue
+            # Oversized caption: split on sentence boundaries; the image line
+            # stays on the first piece, overflow becomes plain text chunks.
+            sentences = SENTENCE_SPLIT_RE.split(text)
+            piece = ""
+            first = True
+            for sentence in sentences:
+                if piece and len(piece) + 1 + len(sentence) > max_size:
+                    buffer.append((piece, figure_path if first else None))
+                    flush()
+                    piece = sentence
+                    first = False
+                else:
+                    piece = f"{piece} {sentence}".strip()
+            if piece:
+                buffer.append((piece, figure_path if first else None))
+                flush()
             continue
         candidate = "\n\n".join([*[p for p, _ in buffer], text])
         if len(candidate) <= max_size:

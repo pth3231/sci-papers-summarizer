@@ -1,4 +1,4 @@
-from src.services.chunker import chunk_markdown
+from src.services.chunker import SENTENCE_SPLIT_RE, chunk_markdown
 
 def build(doc_id="d1", **kw):
     return chunk_markdown(KW_MARKDOWN, doc_id, **kw)
@@ -51,6 +51,23 @@ def test_image_paragraph_becomes_figure_chunk_with_caption():
     assert figs[0].figure_path == "figures/fig3.png"
     assert "Figure 3: Training loss curve" in figs[0].text
     assert figs[0].section == "Methods"
+
+def test_oversized_figure_caption_respects_max_size():
+    caption = ("Figure 1 shows a training curve detail here. " * 28).strip()  # ~1250 chars
+    md = f"# Results\n\n![Figure 1](figs/fig1.png)\n\n{caption}\n"
+    chunks = chunk_markdown(md, "d")
+    assert all(len(c.text) <= 900 for c in chunks)
+    figs = [c for c in chunks if c.kind == "figure"]
+    assert len(figs) == 1
+    assert "![Figure 1](figs/fig1.png)" in figs[0].text
+    assert figs[0].figure_path == "figs/fig1.png"
+    # caption overflow becomes plain text chunks in the same section
+    overflow = [c for c in chunks if c.kind == "text" and "training curve" in c.text]
+    assert overflow and all(c.section == "Results" for c in overflow)
+    # no content lost across the pieces
+    sentences = [s.strip() for s in SENTENCE_SPLIT_RE.split(caption)]
+    joined = "\n\n".join(c.text for c in chunks)
+    assert all(s in joined for s in sentences)
 
 def test_chunk_ids_and_indices():
     chunks = build()
