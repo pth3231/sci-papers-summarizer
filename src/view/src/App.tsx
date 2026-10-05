@@ -11,6 +11,16 @@ import {
 } from './lib/api'
 import type { DocMeta, Message } from './types'
 
+// Matches bare [n] citation markers (not already part of a markdown link).
+const CITATION_RE = /\[(\d{1,3})\](?!\()/g
+
+function extractCitations(content: string, sourceCount: number) {
+  const markers = [...content.matchAll(CITATION_RE)].map((m) => Number(m[1]))
+  const valid = markers.filter((n) => n >= 1 && n <= sourceCount)
+  const invalid = markers.filter((n) => n < 1 || n > sourceCount)
+  return { valid, invalid }
+}
+
 function App() {
   const [docs, setDocs] = useState<DocMeta[]>([])
   const [notice, setNotice] = useState<string | null>(null)
@@ -86,10 +96,12 @@ function App() {
       { id: assistantId, role: 'assistant', content: '' },
     ])
     setIsStreaming(true)
+    let streamed = ''
     try {
       const sources = await streamChat(
         history,
         (delta) => {
+          streamed += delta
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m)),
           )
@@ -97,7 +109,11 @@ function App() {
         activeDocIds,
       )
       setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, sources } : m)),
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, sources, citations: extractCitations(streamed, sources.length) }
+            : m,
+        ),
       )
     } catch (err) {
       const note = err instanceof Error ? err.message : String(err)

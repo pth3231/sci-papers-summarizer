@@ -7,6 +7,10 @@ const API_BASE = import.meta.env.DEV
   ? (import.meta.env.VITE_API_URL ?? 'http://localhost:8000')
   : ''
 
+// Exported for asset URLs (e.g. figure images) that the backend sends as
+// relative paths — same-origin in production, absolute origin in dev.
+export const API_BASE_URL = API_BASE
+
 const ACCEPTED_EXTENSIONS = ['.pdf', '.txt']
 
 // Must match GENERATOR_ERROR_SENTINEL in src/routers/chat.py: once the stream

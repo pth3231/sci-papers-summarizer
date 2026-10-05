@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
+import 'katex/dist/katex.min.css'
+import rehypeKatex from 'rehype-katex'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import { API_BASE_URL } from '../lib/api'
 import type { Message } from '../types'
+
+// Turn [n] markers into #cite-n links so they survive markdown rendering
+// (markdown links can't carry classes — the `a` override below decides
+// chip styling from the invalid-citation list).
+function citationize(content: string): string {
+  return content.replace(/\[(\d{1,3})\](?!\()/g, (_m, num: string) => `[${num}](#cite-${num})`)
+}
 
 interface ChatPanelProps {
   messages: Message[]
@@ -39,10 +50,30 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
             Upload a paper, then ask a question — answers will stream in here.
           </p>
         )}
-        {messages.map((msg) => (
+        {messages.map((msg) => {
+          const invalidCites = msg.citations?.invalid ?? []
+          return (
           <div key={msg.id} className={`message ${msg.role}`}>
             {msg.role === 'assistant' ? (
-              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{msg.content}</Markdown>
+              <Markdown
+                remarkPlugins={[remarkMath, remarkGfm, remarkBreaks]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  a: ({ href, children }) =>
+                    typeof href === 'string' && href.startsWith('#cite-') ? (
+                      <a
+                        href={href}
+                        className={`cite-chip${invalidCites.includes(Number(href.slice(6))) ? ' invalid' : ''}`}
+                      >
+                        {children}
+                      </a>
+                    ) : (
+                      <a href={href} target="_blank" rel="noreferrer">{children}</a>
+                    ),
+                }}
+              >
+                {citationize(msg.content)}
+              </Markdown>
             ) : (
               msg.content
             )}
@@ -54,20 +85,34 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
               </div>
             )}
             {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-              <div className="sources-block">
+              <div className="sources-block" id="cite-list">
                 <p className="sources-title">Sources</p>
                 <ul className="sources-list">
-                  {msg.sources.map((source, index) => (
-                    <li key={index} className="source-item">
-                      <span className="source-filename">{source.filename}</span>
-                      <span className="source-excerpt">{source.excerpt}</span>
-                    </li>
-                  ))}
+                  {msg.sources.map((source) => {
+                    const cited = msg.citations?.valid.includes(source.index) ?? false
+                    return (
+                      <li key={source.index} className={`source-item${cited ? '' : ' uncited'}`}>
+                        <span className="source-filename">
+                          [{source.index}] {source.filename}
+                          {source.section ? ` — ${source.section}` : ''}
+                        </span>
+                        {source.kind === 'figure' && source.figure_url && (
+                          <img
+                            className="source-figure"
+                            src={`${API_BASE_URL}${source.figure_url}`}
+                            alt={source.excerpt}
+                          />
+                        )}
+                        <span className="source-excerpt">{source.excerpt}</span>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="composer">
