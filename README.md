@@ -33,6 +33,15 @@ cd src/view && npm run build
 dist/cd ../.. && src/.venv/bin/python -m uvicorn src.main:src --port 8000
 ```
 
+### First run note
+The first PDF upload downloads marker's models (~2–4GB) to the user cache and
+can take a few minutes; later uploads run in seconds on GPU.
+
+### Verifying citations in the app
+With a paper uploaded and `LLM_API_KEY` set, ask a question — bullets end in [n]
+chips, the Sources list shows sections with cited/uncited state, figure sources
+show their image, and math renders via KaTeX.
+
 ## High-level Design
 
 ![high level design](assets/image.png)

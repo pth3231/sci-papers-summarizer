@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A RAG-based tool that summarizes scientific papers into bullet points, built for intensive thesis-related reading. The intended pipeline (see README.md and assets/image.png):
 
-1. **Ingest**: upload documents to a FastAPI server → parse to readable format (marker) → chunk → embed → store in a VectorDB
+1. **Ingest**: upload documents to a FastAPI server → parse with marker (Markdown + extracted figures, cached per upload under `uploads/`) → chunk (sections + figures) → embed → store in the `documents_v2` Chroma collection. Documents uploaded before the marker switch must be re-uploaded.
 2. **Retrieve & Generate**: embed the user's question → similarity search in VectorDB → combine relevant chunks with the prompt → LLM (Z.ai GLM via its OpenAI-compatible API; default `glm-4.6`, configured by `LLM_MODEL` / `LLM_BASE_URL` / `LLM_API_KEY` in the root `.env`) → stream the answer back to the UI
 
 Planned tech: FastAPI backend, marker for PDF conversion, streamed responses to the frontend.
