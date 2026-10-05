@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "chromadb>=1.5.9",
     "fastapi[standard]>=0.141.1",
+    "marker-pdf>=1.0",
     "pydantic>=2.13.5",
     "requests>=2.34.2",
     "sentence-transformers>=6.0.1",
@@ -16,3 +17,7 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+markers = ["marker: requires downloaded marker models (run with MARKER_INTEGRATION=1)"]
+addopts = "-m 'not marker'"
