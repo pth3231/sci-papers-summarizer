@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -17,7 +18,9 @@ router = APIRouter(
 SYSTEM_PROMPT = (
     "You are a scientific paper summarizer. Answer the question using the "
     "provided context excerpts from the user's papers when they are relevant. "
-    "Prefer concise bullet points."
+    "Prefer concise bullet points. End each bullet or claim with its citation "
+    "marker(s), like [1] or [2][5]. Cite only the numbered excerpts provided, "
+    "and say so explicitly when the context is insufficient."
 )
 
 # Excerpts in the X-Sources header are for display only, not re-parsed for
@@ -29,6 +32,36 @@ SOURCE_EXCERPT_LENGTH = 200
 # with this sentinel so the client can render an error banner instead of
 # mistaking the failure report for answer text.
 GENERATOR_ERROR_SENTINEL = "---generator-error---"
+
+
+def build_context(documents: list[str], metadatas: list[dict]) -> str:
+    return "\n\n".join(
+        f"[{i + 1}] ({meta.get('filename', 'unknown source')} — "
+        f"{meta.get('section') or 'no section'}) {text}"
+        for i, (text, meta) in enumerate(zip(documents, metadatas))
+    )
+
+
+def build_sources(documents: list[str], metadatas: list[dict]) -> list[dict]:
+    sources = []
+    for i, (text, meta) in enumerate(zip(documents, metadatas)):
+        figure_url = None
+        if meta.get("figure_path"):
+            figure_url = (
+                f"/documents/{meta.get('document_id')}/figures/"
+                f"{Path(meta['figure_path']).name}"
+            )
+        sources.append(
+            {
+                "index": i + 1,
+                "filename": meta.get("filename", "unknown source"),
+                "section": meta.get("section", ""),
+                "kind": meta.get("kind", "text"),
+                "figure_url": figure_url,
+                "excerpt": text[:SOURCE_EXCERPT_LENGTH],
+            }
+        )
+    return sources
 
 
 @router.post("/")
@@ -50,10 +83,7 @@ async def chat(request: ChatRequest):
     documents = results["documents"][0] if results["documents"] else []
     metadatas = results["metadatas"][0] if results["metadatas"] else []
 
-    context = "\n\n".join(
-        f"[excerpt {i + 1} — {meta.get('filename', 'unknown source')}] {text}"
-        for i, (text, meta) in enumerate(zip(documents, metadatas))
-    )
+    context = build_context(documents, metadatas)
     user_prompt = (
         f"Context excerpts:\n{context}\n\nQuestion: {request.message}"
         if context
@@ -62,13 +92,7 @@ async def chat(request: ChatRequest):
 
     # Retrieval already ran, so sources are known before generation starts —
     # send them as a header rather than changing the streamed body format.
-    sources = [
-        {
-            "filename": meta.get("filename", "unknown source"),
-            "excerpt": text[:SOURCE_EXCERPT_LENGTH],
-        }
-        for text, meta in zip(documents, metadatas)
-    ]
+    sources = build_sources(documents, metadatas)
 
     async def answer_stream():
         try:
