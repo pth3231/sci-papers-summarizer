@@ -6,13 +6,14 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { API_BASE_URL } from '../lib/api'
+import { CITATION_MARKER_RE } from '../lib/citations'
 import type { Message } from '../types'
 
 // Turn [n] markers into #cite-n links so they survive markdown rendering
 // (markdown links can't carry classes — the `a` override below decides
 // chip styling from the invalid-citation list).
 function citationize(content: string): string {
-  return content.replace(/\[(\d{1,3})\](?!\()/g, (_m, num: string) => `[${num}](#cite-${num})`)
+  return content.replace(CITATION_MARKER_RE, (_m, num: string) => `[${num}](#cite-${num})`)
 }
 
 interface ChatPanelProps {

@@ -9,13 +9,11 @@ import {
   streamChat,
   uploadDocument,
 } from './lib/api'
+import { CITATION_MARKER_RE } from './lib/citations'
 import type { DocMeta, Message } from './types'
 
-// Matches bare [n] citation markers (not already part of a markdown link).
-const CITATION_RE = /\[(\d{1,3})\](?!\()/g
-
 function extractCitations(content: string, sourceCount: number) {
-  const markers = [...content.matchAll(CITATION_RE)].map((m) => Number(m[1]))
+  const markers = [...content.matchAll(CITATION_MARKER_RE)].map((m) => Number(m[1]))
   const valid = markers.filter((n) => n >= 1 && n <= sourceCount)
   const invalid = markers.filter((n) => n < 1 || n > sourceCount)
   return { valid, invalid }
