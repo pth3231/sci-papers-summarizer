@@ -4,12 +4,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from src.database import document_store
+from src.database import document_store, vector_store
 from src.main import src as app
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
+    import chromadb
+
     monkeypatch.setattr("src.routers.documents.UPLOAD_DIR", tmp_path)
 
     test_db_path = tmp_path / "document_registry.db"
@@ -31,6 +33,12 @@ def client(tmp_path, monkeypatch):
     test_connection.commit()
     monkeypatch.setattr(document_store, "DB_PATH", test_db_path)
     monkeypatch.setattr(document_store, "_connection", test_connection)
+
+    # Fake embeddings here are low-dimensional; writing them into the real
+    # persistent collection would lock its dimension and break production.
+    test_chroma_client = chromadb.PersistentClient(path=str(tmp_path / "chroma_db"))
+    test_collection = test_chroma_client.get_or_create_collection(name="documents_v2")
+    monkeypatch.setattr(vector_store, "collection", test_collection)
 
     yield TestClient(app)
 
