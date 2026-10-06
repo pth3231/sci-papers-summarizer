@@ -445,3 +445,36 @@
   font-size: 0.75rem;
   color: var(--danger);
 }
+
+/* Citation chips and figure sources */
+
+.cite-chip {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  vertical-align: super;
+}
+
+.cite-chip.invalid {
+  background: var(--danger-soft);
+  color: var(--danger);
+  outline: 1px dashed var(--danger);
+}
+
+.source-item.uncited {
+  opacity: 0.45;
+}
+
+.source-figure {
+  margin: 4px 0;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
