@@ -59,3 +59,41 @@ def test_real_marker_conversion(tmp_path: Path):
         writer.write(fh)
     doc = parser.parse_file(str(pdf), figures_dir=str(tmp_path / "figs"))
     assert isinstance(doc.markdown, str)
+
+
+def test_vision_parse_page_parses_markdown_and_figures(monkeypatch):
+    import json as json_module
+    from PIL import Image
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json_module.dumps(
+                                {
+                                    "markdown": "# Intro\n\ntext",
+                                    "figures": [
+                                        {"bbox": [0, 0, 10, 10], "caption": "Figure 1: a plot"}
+                                    ],
+                                }
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(parser, "_get_vision_client", lambda: FakeClient())
+    monkeypatch.setattr(parser, "require_api_key", lambda: "test-key")
+    image = Image.new("RGB", (100, 100))
+    result = parser.vision_parse_page(image)
+    assert result.markdown == "# Intro\n\ntext"
+    assert result.figures == [parser.FigureRegion(bbox=(0, 0, 10, 10), caption="Figure 1: a plot")]

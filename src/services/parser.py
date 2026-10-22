@@ -1,5 +1,12 @@
+import base64
+import io
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import httpx
+
+from src.services.generator import BASE_URL, MODEL, require_api_key
 
 
 @dataclass
@@ -12,6 +19,18 @@ class Figure:
 class ParsedDocument:
     markdown: str
     figures: list[Figure] = field(default_factory=list)
+
+
+@dataclass
+class FigureRegion:
+    bbox: tuple[float, float, float, float]
+    caption: str = ""
+
+
+@dataclass
+class PageResult:
+    markdown: str
+    figures: list[FigureRegion] = field(default_factory=list)
 
 
 def render_pages(pdf_path: str, dpi: int = 150) -> list["Image.Image"]:
@@ -29,6 +48,64 @@ def render_pages(pdf_path: str, dpi: int = 150) -> list["Image.Image"]:
         ]
     finally:
         doc.close()
+
+
+VISION_PROMPT = (
+    "You are converting one page of a scanned academic paper into structured "
+    "data. Return ONLY a JSON object (no markdown code fences, no commentary) "
+    "with exactly two keys: \"markdown\" (the page's content as GitHub-flavored "
+    "markdown, preserving heading levels with # syntax) and \"figures\" (a JSON "
+    "array of objects with \"bbox\": [x0, y0, x1, y1] in this image's pixel "
+    "coordinates and \"caption\": the figure or table's caption text, for every "
+    "figure or table on the page; an empty array if there are none)."
+)
+
+_vision_client: httpx.Client | None = None
+
+
+def _get_vision_client() -> httpx.Client:
+    global _vision_client
+    if _vision_client is None:
+        _vision_client = httpx.Client(timeout=120)
+    return _vision_client
+
+
+def vision_parse_page(image: "Image.Image") -> PageResult:
+    """Send one page image to the configured GLM model and parse its reply.
+
+    Kept as a module-level seam so tests can monkeypatch it.
+    """
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode()
+
+    response = _get_vision_client().post(
+        f"{BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {require_api_key()}"},
+        json={
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": VISION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    data = json.loads(content)
+    figures = [
+        FigureRegion(bbox=tuple(figure["bbox"]), caption=figure.get("caption", ""))
+        for figure in data.get("figures", [])
+    ]
+    return PageResult(markdown=data["markdown"], figures=figures)
 
 
 _converter = None  # marker models are heavy — load once per process
