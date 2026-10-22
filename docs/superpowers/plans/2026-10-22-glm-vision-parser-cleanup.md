@@ -16,7 +16,10 @@
 - `ParsedDocument`/`Figure` shapes, and the `/documents/` upload API contract, must not change — `chunker.py` and `routers/documents.py` need no changes.
 - The root `pyproject.toml` + root `.venv` is the real, in-use project environment (confirmed by user). `src/pyproject.toml`, `src/uv.lock`, `src/.venv`, `src/README.md` are a stale duplicate scaffold and must be deleted, with their pytest marker config (`-m 'not marker'`) re-created in the root `pyproject.toml`.
 - User asked for lower effort wherever reasonable: no new test-framework plugins (e.g. pytest-asyncio) — async code is tested via `asyncio.run(...)` inside plain sync test functions. The vision HTTP call in `parser.py` uses a plain pooled sync `httpx.Client`, not shared with `generator.py`'s async client (different call context; sharing would require making the whole upload path async for no behavioral benefit).
-- Full test suite (`pytest -q`, run from repo root) must pass after every task.
+- Full test suite must pass after every task.
+- **Environment:** there is one real Python environment for this project, at the absolute path `/home/haven/Code/sci-papers-summarizer/.venv`. Do NOT run `uv sync` or `uv run` from inside this worktree — `uv` resolves against whatever `pyproject.toml` it finds in the current directory tree, and since this worktree has its own copy of that file, `uv sync`/`uv run` here can silently rewrite a *different* environment than the one you intend, or create a stray local `.venv` that drifts from the real one. Instead:
+  - Run tests with: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest <args>`
+  - Install a new dependency with: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pip install <package>` (installs/updates only the named package — it will not reconcile or remove anything else, unlike `uv sync`).
 
 ---
 
@@ -112,12 +115,12 @@ LLAMA_CPP_BINARY=/home/haven/.local/opt/llama.cpp/llama-server
 
 `.env` should end up containing only the `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` block (with its existing comment).
 
-- [ ] **Step 6: Sync the environment and run the full suite**
+- [ ] **Step 6: Install the new dependencies and run the full suite**
 
 ```bash
-cd /home/haven/Code/sci-papers-summarizer
-uv sync
-uv run pytest -q
+/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pip install pymupdf pillow
+/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pip uninstall -y marker-pdf
+/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src -q
 ```
 
 Expected: all tests pass (marker-pdf code paths aren't touched yet, so `test_parser.py`/`test_documents_figures.py` still pass using the old `marker_convert` seam).
@@ -168,7 +171,7 @@ def test_aclose_client_resets_singleton():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest src/tests/test_generator.py -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_generator.py -v`
 Expected: FAIL with `AttributeError: module 'src.services.generator' has no attribute '_client'` (or `get_client`).
 
 - [ ] **Step 3: Implement the pooled client in `generator.py`**
@@ -254,7 +257,7 @@ Every line here is one indentation level shallower than in the current file (the
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest src/tests/test_generator.py -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_generator.py -v`
 Expected: PASS (2 tests)
 
 - [ ] **Step 5: Wire shutdown cleanup into the app**
@@ -271,7 +274,7 @@ async def _close_llm_client():
 
 - [ ] **Step 6: Run the full suite**
 
-Run: `uv run pytest -q`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest -q`
 Expected: all tests pass, including the new `test_generator.py`.
 
 - [ ] **Step 7: Commit**
@@ -317,7 +320,7 @@ def test_render_pages_returns_one_image_per_pdf_page(tmp_path: Path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest src/tests/test_parser.py::test_render_pages_returns_one_image_per_pdf_page -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py::test_render_pages_returns_one_image_per_pdf_page -v`
 Expected: FAIL with `AttributeError: module 'src.services.parser' has no attribute 'render_pages'`.
 
 - [ ] **Step 3: Implement `render_pages` in `parser.py`**
@@ -344,7 +347,7 @@ def render_pages(pdf_path: str, dpi: int = 150) -> list["Image.Image"]:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest src/tests/test_parser.py::test_render_pages_returns_one_image_per_pdf_page -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py::test_render_pages_returns_one_image_per_pdf_page -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -410,7 +413,7 @@ def test_vision_parse_page_parses_markdown_and_figures(monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest src/tests/test_parser.py::test_vision_parse_page_parses_markdown_and_figures -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py::test_vision_parse_page_parses_markdown_and_figures -v`
 Expected: FAIL with `AttributeError: module 'src.services.parser' has no attribute 'vision_parse_page'`.
 
 - [ ] **Step 3: Implement the vision call in `parser.py`**
@@ -505,7 +508,7 @@ def vision_parse_page(image: "Image.Image") -> PageResult:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest src/tests/test_parser.py::test_vision_parse_page_parses_markdown_and_figures -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py::test_vision_parse_page_parses_markdown_and_figures -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -621,7 +624,7 @@ def test_real_glm_vision_conversion(tmp_path: Path):
 
 - [ ] **Step 2: Run the new test to verify it fails**
 
-Run: `uv run pytest src/tests/test_parser.py::test_pdf_pages_are_rendered_and_figures_saved -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py::test_pdf_pages_are_rendered_and_figures_saved -v`
 Expected: FAIL — `parse_pdf_file` still calls the (soon to be deleted) `marker_convert`, so `render_pages`/`vision_parse_page` are never invoked and the assertions on `page0_fig0.png` fail.
 
 - [ ] **Step 3: Remove `marker_convert` and rewrite `parse_pdf_file`**
@@ -693,7 +696,7 @@ def parse_pdf_file(file_path: str, figures_dir: str | None = None) -> ParsedDocu
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest src/tests/test_parser.py -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_parser.py -v`
 Expected: all tests in the file PASS (the `live_api` one is skipped by default per the `addopts` from Task 1).
 
 - [ ] **Step 5: Commit**
@@ -763,14 +766,14 @@ The test's assertion `assert res.json()["chunks"] == 1` stays valid: one page pr
 
 - [ ] **Step 2: Run test to verify it fails, then passes**
 
-Run: `uv run pytest src/tests/test_documents_figures.py -v`
+Run: `/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest src/tests/test_documents_figures.py -v`
 Expected (before Task 3-5 were applied, this would fail; since they're already done, it should): PASS. If it fails on the chunk-count assertion, inspect `res.json()["chunk_preview"]` to see the actual chunk text/count and adjust the fake figure/caption text rather than the production code.
 
 - [ ] **Step 3: Run the entire suite**
 
 ```bash
 cd /home/haven/Code/sci-papers-summarizer
-uv run pytest -q
+/home/haven/Code/sci-papers-summarizer/.venv/bin/python -m pytest -q
 ```
 
 Expected: all tests pass (live-API test skipped by default).
