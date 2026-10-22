@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,12 +15,20 @@ from fastapi.staticfiles import StaticFiles
 from src.routers.documents import router as documents_router
 from src.routers.search import router as search_router
 from src.routers.chat import router as chat_router
+from src.services.generator import aclose_client
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await aclose_client()
 
 
 src = FastAPI(
     title="LNG302 RAG Backend",
     description="Backend API for the LNG302 NLP project",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # The Vite dev server serves the frontend on a different origin (and may
@@ -41,13 +50,6 @@ src.include_router(chat_router)
 @src.get("/health")
 def health_check():
     return {"status": "ok"}
-
-
-@src.on_event("shutdown")
-async def _close_llm_client():
-    from src.services.generator import aclose_client
-
-    await aclose_client()
 
 
 # Serve the built frontend from the same origin as the API. Mount last so the

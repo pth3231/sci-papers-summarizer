@@ -21,8 +21,5 @@ dependencies = [
 package = false
 
 [tool.pytest.ini_options]
-markers = [
-    "live_api: hits the real GLM API (run with LLM_API_KEY set and -m live_api)",
-    "marker: real marker-pdf conversion (skipped when marker-pdf is not installed)",
-]
-addopts = "-m 'not live_api and not marker'"
+markers = ["live_api: hits the real GLM API (run with LLM_API_KEY set and -m live_api)"]
+addopts = "-m 'not live_api'"
