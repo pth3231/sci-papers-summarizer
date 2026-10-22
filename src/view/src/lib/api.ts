@@ -27,11 +27,11 @@ interface UploadResponse {
   document_id: string
   filename: string
   size_bytes: number
-  chunks: number
 }
 
-// POST multipart/form-data to the backend; the server parses, chunks, embeds,
-// and ingests the document before responding.
+// POST multipart/form-data to the backend; the server saves the file and
+// returns immediately — parsing/chunking/embedding continue in the
+// background, so the caller must poll listDocuments() for completion.
 export async function uploadDocument(file: File): Promise<DocMeta> {
   const body = new FormData()
   body.append('file', file)
@@ -44,8 +44,7 @@ export async function uploadDocument(file: File): Promise<DocMeta> {
     id: data.document_id,
     name: data.filename,
     size: data.size_bytes,
-    chunks: data.chunks,
-    status: 'ready',
+    status: 'uploading',
   }
 }
 
@@ -53,14 +52,16 @@ interface DocumentListEntry {
   id: string
   filename: string
   size_bytes: number
-  status: 'ready' | 'error'
+  status: 'uploading' | 'ready' | 'error'
   chunk_count: number
   error_message: string | null
+  progress: string | null
   created_at: string
 }
 
 // GET the backend-authoritative document list — called on mount so a reload
-// still shows previously uploaded papers.
+// still shows previously uploaded papers, and polled while any upload is
+// still processing (see App.tsx).
 export async function listDocuments(): Promise<DocMeta[]> {
   const res = await fetch(`${API_BASE}/documents/`)
   if (!res.ok) throw new Error(await errorMessage(res))
@@ -73,6 +74,7 @@ export async function listDocuments(): Promise<DocMeta[]> {
     status: doc.status,
     chunks: doc.chunk_count,
     error: doc.error_message ?? undefined,
+    progress: doc.progress ?? undefined,
   }))
 }
 
@@ -88,6 +90,7 @@ export async function streamChat(
   history: Message[],
   onChunk: (delta: string) => void,
   documentIds: string[] = [],
+  topK?: number,
 ): Promise<SourceExcerpt[]> {
   const message = [...history].reverse().find((m) => m.role === 'user')?.content
   if (!message) return []
@@ -95,7 +98,11 @@ export async function streamChat(
   const res = await fetch(`${API_BASE}/chat/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, document_ids: documentIds }),
+    body: JSON.stringify({
+      message,
+      document_ids: documentIds,
+      ...(topK !== undefined ? { top_k: topK } : {}),
+    }),
   })
   if (!res.ok) throw new Error(await errorMessage(res))
   if (!res.body) throw new Error('response has no body to stream')

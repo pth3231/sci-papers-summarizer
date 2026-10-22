@@ -31,4 +31,6 @@ export interface DocMeta {
   chunks?: number
   /** Set when status is 'error' — why the upload failed. */
   error?: string
+  /** Set while status is 'uploading' — e.g. "page 2/5". */
+  progress?: string
 }

@@ -12,6 +12,19 @@ import {
 import { CITATION_MARKER_RE } from './lib/citations'
 import type { DocMeta, Message } from './types'
 
+const MAX_CITATIONS = 12
+const CITATIONS_PER_DOC = 3
+const DEFAULT_CITATIONS = 6 // used when searching across all papers (no doc toggled)
+
+// More papers in scope → retrieve more candidate chunks, so the model has
+// enough to cite from; clamp to MAX_CITATIONS so the sources list stays
+// readable. No documents at all means nothing to retrieve from.
+function computeTopK(activeDocCount: number, totalDocCount: number): number {
+  if (totalDocCount === 0) return 0
+  if (activeDocCount === 0) return DEFAULT_CITATIONS
+  return Math.min(MAX_CITATIONS, activeDocCount * CITATIONS_PER_DOC)
+}
+
 function extractCitations(content: string, sourceCount: number) {
   const markers = [...content.matchAll(CITATION_MARKER_RE)].map((m) => Number(m[1]))
   const valid = markers.filter((n) => n >= 1 && n <= sourceCount)
@@ -33,6 +46,21 @@ function App() {
       .then(setDocs)
       .catch((err) => setNotice(err instanceof Error ? err.message : String(err)))
   }, [])
+
+  // Uploads finish in a background task on the server; poll for status/progress
+  // while any document is still processing, and stop once none are.
+  const hasUploadingDoc = docs.some((d) => d.status === 'uploading')
+  useEffect(() => {
+    if (!hasUploadingDoc) return
+    const interval = setInterval(() => {
+      listDocuments()
+        .then(setDocs)
+        .catch(() => {
+          // Transient fetch failure during polling — next tick retries.
+        })
+    }, 1500)
+    return () => clearInterval(interval)
+  }, [hasUploadingDoc])
 
   function toggleDoc(id: string) {
     setActiveDocIds((current) =>
@@ -96,6 +124,7 @@ function App() {
     setIsStreaming(true)
     let streamed = ''
     try {
+      const topK = computeTopK(activeDocIds.length, docs.length)
       const sources = await streamChat(
         history,
         (delta) => {
@@ -105,6 +134,7 @@ function App() {
           )
         },
         activeDocIds,
+        topK,
       )
       setMessages((prev) =>
         prev.map((m) =>

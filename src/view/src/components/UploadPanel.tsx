@@ -110,7 +110,10 @@ export function UploadPanel({
             <span className="doc-meta">
               {formatSize(doc.size)}
               {doc.chunks !== undefined && ` · ${doc.chunks} chunks`}
-              <span className={`status-chip ${doc.status}`}>{STATUS_LABEL[doc.status]}</span>
+              <span className={`status-chip ${doc.status}`}>
+                {STATUS_LABEL[doc.status]}
+                {doc.progress && ` (${doc.progress})`}
+              </span>
             </span>
             {doc.error && <span className="doc-error">{doc.error}</span>}
           </li>

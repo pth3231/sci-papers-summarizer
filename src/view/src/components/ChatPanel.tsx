@@ -24,9 +24,50 @@ interface ChatPanelProps {
   onSend: (text: string) => void
 }
 
+function sourceElementId(messageId: string, index: number): string {
+  return `source-${messageId}-${index}`
+}
+
 export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPanelProps) {
   const [input, setInput] = useState('')
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set())
+  const [highlightedSourceId, setHighlightedSourceId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const pendingScrollIdRef = useRef<string | null>(null)
+
+  function toggleSources(id: string) {
+    setExpandedSources((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Expand that message's sources (if collapsed) and queue a scroll — the
+  // target may not exist yet this render if sources were just expanded, so
+  // the actual scroll happens in the effect below once the DOM has it.
+  function goToSource(messageId: string, index: number) {
+    setExpandedSources((current) => {
+      if (current.has(messageId)) return current
+      const next = new Set(current)
+      next.add(messageId)
+      return next
+    })
+    pendingScrollIdRef.current = sourceElementId(messageId, index)
+  }
+
+  useEffect(() => {
+    const targetId = pendingScrollIdRef.current
+    if (!targetId) return
+    pendingScrollIdRef.current = null
+    const el = document.getElementById(targetId)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedSourceId(targetId)
+    const timer = setTimeout(() => setHighlightedSourceId(null), 1500)
+    return () => clearTimeout(timer)
+  }, [expandedSources])
 
   // Keep the newest message (and its streaming chunks) in view.
   useEffect(() => {
@@ -65,6 +106,10 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
                       <a
                         href={href}
                         className={`cite-chip${invalidCites.includes(Number(href.slice(6))) ? ' invalid' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          goToSource(msg.id, Number(href.slice(6)))
+                        }}
                       >
                         {children}
                       </a>
@@ -86,29 +131,42 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
               </div>
             )}
             {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-              <div className="sources-block" id="cite-list">
-                <p className="sources-title">Sources</p>
-                <ul className="sources-list">
-                  {msg.sources.map((source) => {
-                    const cited = msg.citations?.valid.includes(source.index) ?? false
-                    return (
-                      <li key={source.index} className={`source-item${cited ? '' : ' uncited'}`}>
-                        <span className="source-filename">
-                          [{source.index}] {source.filename}
-                          {source.section ? ` — ${source.section}` : ''}
-                        </span>
-                        {source.kind === 'figure' && source.figure_url && (
-                          <img
-                            className="source-figure"
-                            src={`${API_BASE_URL}${source.figure_url}`}
-                            alt={source.excerpt}
-                          />
-                        )}
-                        <span className="source-excerpt">{source.excerpt}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
+              <div className="sources-block">
+                <button
+                  type="button"
+                  className="sources-toggle"
+                  onClick={() => toggleSources(msg.id)}
+                >
+                  Sources ({msg.sources.length}) {expandedSources.has(msg.id) ? '▾' : '▸'}
+                </button>
+                {expandedSources.has(msg.id) && (
+                  <ul className="sources-list">
+                    {msg.sources.map((source) => {
+                      const cited = msg.citations?.valid.includes(source.index) ?? false
+                      const elementId = sourceElementId(msg.id, source.index)
+                      return (
+                        <li
+                          key={source.index}
+                          id={elementId}
+                          className={`source-item${cited ? '' : ' uncited'}${highlightedSourceId === elementId ? ' highlighted' : ''}`}
+                        >
+                          <span className="source-filename">
+                            [{source.index}] {source.filename}
+                            {source.section ? ` — ${source.section}` : ''}
+                          </span>
+                          {source.kind === 'figure' && source.figure_url && (
+                            <img
+                              className="source-figure"
+                              src={`${API_BASE_URL}${source.figure_url}`}
+                              alt={source.excerpt}
+                            />
+                          )}
+                          <span className="source-excerpt">{source.excerpt}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
               </div>
             )}
           </div>
