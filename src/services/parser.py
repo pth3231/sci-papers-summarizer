@@ -1,12 +1,17 @@
 import base64
 import io
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
 
-from src.services.generator import BASE_URL, MODEL, require_api_key
+from src.services.generator import BASE_URL, require_api_key
+
+# The chat model (LLM_MODEL, e.g. glm-5.2) is text-only — it rejects any
+# non-"text" content block. Vision needs a separate, vision-capable model.
+VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "glm-4.5v")
 
 
 @dataclass
@@ -90,7 +95,7 @@ def vision_parse_page(image: "Image.Image") -> PageResult:
         f"{BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {require_api_key()}"},
         json={
-            "model": MODEL,
+            "model": VISION_MODEL,
             "messages": [
                 {
                     "role": "user",
