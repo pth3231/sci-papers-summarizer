@@ -16,12 +16,14 @@ from src.routers.documents import router as documents_router
 from src.routers.search import router as search_router
 from src.routers.chat import router as chat_router
 from src.services.generator import aclose_client
+from src.services.parser import close_vision_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
     await aclose_client()
+    close_vision_client()
 
 
 src = FastAPI(

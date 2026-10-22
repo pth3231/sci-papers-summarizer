@@ -30,12 +30,13 @@ Set these in `.env` at the repo root (gitignored):
 ### Production workflow
 ```bash
 cd src/view && npm run build
-dist/cd ../.. && src/.venv/bin/python -m uvicorn src.main:src --port 8000
+cd ../.. && .venv/bin/python -m uvicorn src.main:src --port 8000
 ```
 
 ### First run note
-The first PDF upload downloads marker's models (~2–4GB) to the user cache and
-can take a few minutes; later uploads run in seconds on GPU.
+PDF parsing calls the GLM vision API per page (markdown + figure bounding
+boxes), so there's no local model download — uploads just need `LLM_API_KEY`
+set and a network connection to the LLM endpoint.
 
 ### Verifying citations in the app
 With a paper uploaded and `LLM_API_KEY` set, ask a question — bullets end in [n]
@@ -66,5 +67,5 @@ show their image, and math renders via KaTeX.
 ## References:
 
 - Model: GLM via Z.ai's OpenAI-compatible API — https://z.ai/model-list
-- Converter: https://github.com/datalab-to/marker
+- Converter: GLM vision (same API) parses each rendered PDF page into markdown and figure bounding boxes — see `src/services/parser.py`'s `vision_parse_page`
 - https://martinuke0.github.io/posts/2026-01-06-mastering-rag-pipelines-a-comprehensive-guide-to-retrieval-augmented-generation/#3-generator-augmentation-and-llm

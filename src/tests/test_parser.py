@@ -59,6 +59,49 @@ def test_pdf_pages_are_rendered_and_figures_saved(tmp_path: Path, monkeypatch):
     assert (fig_dir / "page0_fig0.png").exists()
 
 
+def test_pdf_multi_page_figures_with_bracketed_caption(tmp_path: Path, monkeypatch):
+    fig_dir = tmp_path / "figures"
+
+    class FakeImage:
+        def crop(self, box):
+            return self
+
+        def save(self, path):
+            Path(path).write_bytes(b"png")
+
+    fake_pages = [FakeImage(), FakeImage()]
+
+    def fake_render_pages(pdf_path):
+        return fake_pages
+
+    def fake_vision_parse_page(image):
+        index = fake_pages.index(image)
+        if index == 0:
+            return parser.PageResult(
+                markdown="# Page 1",
+                figures=[
+                    parser.FigureRegion(
+                        bbox=(0, 0, 1, 1), caption="Figure 1: accuracy [12]"
+                    )
+                ],
+            )
+        return parser.PageResult(
+            markdown="# Page 2",
+            figures=[
+                parser.FigureRegion(bbox=(0, 0, 1, 1), caption="Figure 2: loss curve")
+            ],
+        )
+
+    monkeypatch.setattr(parser, "render_pages", fake_render_pages)
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
+    doc = parser.parse_file("whatever.pdf", figures_dir=str(fig_dir))
+
+    assert [f.name for f in doc.figures] == ["page0_fig0.png", "page1_fig0.png"]
+    assert (fig_dir / "page0_fig0.png").exists()
+    assert (fig_dir / "page1_fig0.png").exists()
+    assert "![page0_fig0.png](page0_fig0.png)" in doc.markdown
+
+
 @pytest.mark.live_api
 def test_real_glm_vision_conversion(tmp_path: Path):
     import os

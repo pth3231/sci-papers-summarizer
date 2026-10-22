@@ -70,6 +70,13 @@ def _get_vision_client() -> httpx.Client:
     return _vision_client
 
 
+def close_vision_client() -> None:
+    global _vision_client
+    if _vision_client is not None:
+        _vision_client.close()
+        _vision_client = None
+
+
 def vision_parse_page(image: "Image.Image") -> PageResult:
     """Send one page image to the configured GLM model and parse its reply.
 
@@ -124,8 +131,7 @@ def parse_pdf_file(file_path: str, figures_dir: str | None = None) -> ParsedDocu
             if out:
                 box = tuple(int(v) for v in region.bbox)
                 page_image.crop(box).save(str(out / name))
-            caption = region.caption or name
-            markdown_blocks.append(f"![{caption}]({name})\n\n{region.caption}".strip())
+            markdown_blocks.append(f"![{name}]({name})\n\n{region.caption}".strip())
             figures.append(Figure(name=name, caption=region.caption))
     return ParsedDocument(markdown="\n\n".join(markdown_blocks), figures=figures)
 
