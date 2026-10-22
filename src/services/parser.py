@@ -108,38 +108,26 @@ def vision_parse_page(image: "Image.Image") -> PageResult:
     return PageResult(markdown=data["markdown"], figures=figures)
 
 
-_converter = None  # marker models are heavy — load once per process
-
-
-def marker_convert(pdf_path: str) -> tuple[str, dict]:
-    """Run marker and return (markdown, {image_name: PIL.Image}).
-
-    Kept as a module-level seam so tests can monkeypatch it.
-    """
-    global _converter
-    if _converter is None:
-        from marker.converters.pdf import PdfConverter
-        from marker.models import create_model_dict
-
-        _converter = PdfConverter(artifact_dict=create_model_dict())
-    rendered = _converter(pdf_path)
-    from marker.output import text_from_rendered
-
-    text, _, images = text_from_rendered(rendered)
-    return text, images
-
-
 def parse_pdf_file(file_path: str, figures_dir: str | None = None) -> ParsedDocument:
-    markdown, images = marker_convert(file_path)
-    figures: list[Figure] = []
-    if images and figures_dir:
-        out = Path(figures_dir)
+    pages = render_pages(file_path)
+    out = Path(figures_dir) if figures_dir else None
+    if out:
         out.mkdir(parents=True, exist_ok=True)
-        for name, image in images.items():
-            safe = Path(name).name  # marker controls names; sanitize anyway
-            image.save(str(out / safe))
-            figures.append(Figure(name=safe))
-    return ParsedDocument(markdown=markdown, figures=figures)
+
+    markdown_blocks: list[str] = []
+    figures: list[Figure] = []
+    for page_index, page_image in enumerate(pages):
+        result = vision_parse_page(page_image)
+        markdown_blocks.append(result.markdown)
+        for fig_index, region in enumerate(result.figures):
+            name = f"page{page_index}_fig{fig_index}.png"
+            if out:
+                box = tuple(int(v) for v in region.bbox)
+                page_image.crop(box).save(str(out / name))
+            caption = region.caption or name
+            markdown_blocks.append(f"![{caption}]({name})\n\n{region.caption}".strip())
+            figures.append(Figure(name=name, caption=region.caption))
+    return ParsedDocument(markdown="\n\n".join(markdown_blocks), figures=figures)
 
 
 def parse_text_file(file_path: str) -> ParsedDocument:

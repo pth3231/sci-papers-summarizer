@@ -30,25 +30,41 @@ def test_txt_file_returns_markdown_without_figures(tmp_path: Path):
     assert doc.figures == []
 
 
-def test_pdf_uses_marker_and_saves_figures(tmp_path: Path, monkeypatch):
+def test_pdf_pages_are_rendered_and_figures_saved(tmp_path: Path, monkeypatch):
     fig_dir = tmp_path / "figures"
 
     class FakeImage:
+        def crop(self, box):
+            return self
+
         def save(self, path):
             Path(path).write_bytes(b"png")
 
-    def fake_convert(pdf_path):
-        return ("# T\n\ntext\n\n![f](fig1.png)\n", {"fig1.png": FakeImage()})
+    fake_page = FakeImage()
 
-    monkeypatch.setattr(parser, "marker_convert", fake_convert)
+    def fake_render_pages(pdf_path):
+        return [fake_page]
+
+    def fake_vision_parse_page(image):
+        return parser.PageResult(
+            markdown="# T\n\ntext",
+            figures=[parser.FigureRegion(bbox=(0, 0, 1, 1), caption="Figure 1: a plot")],
+        )
+
+    monkeypatch.setattr(parser, "render_pages", fake_render_pages)
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
     doc = parser.parse_file("whatever.pdf", figures_dir=str(fig_dir))
     assert doc.markdown.startswith("# T")
-    assert [f.name for f in doc.figures] == ["fig1.png"]
-    assert (fig_dir / "fig1.png").exists()
+    assert [f.name for f in doc.figures] == ["page0_fig0.png"]
+    assert (fig_dir / "page0_fig0.png").exists()
 
 
-@pytest.mark.marker
-def test_real_marker_conversion(tmp_path: Path):
+@pytest.mark.live_api
+def test_real_glm_vision_conversion(tmp_path: Path):
+    import os
+
+    if not os.environ.get("LLM_API_KEY"):
+        pytest.skip("LLM_API_KEY not set")
     pytest.importorskip("pypdf")
     from pypdf import PdfWriter
 

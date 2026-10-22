@@ -49,13 +49,25 @@ def test_upload_stores_figure_and_serves_it(client, monkeypatch):
     from src.services import parser
 
     class FakeImage:
+        def crop(self, box):
+            return self
+
         def save(self, path):
             Path(path).write_bytes(b"fakepng")
 
-    def fake_convert(pdf_path):
-        return ("# Paper\n\n![f](fig1.png)\n\nFigure 1: A curve.\n", {"fig1.png": FakeImage()})
+    fake_page = FakeImage()
 
-    monkeypatch.setattr(parser, "marker_convert", fake_convert)
+    def fake_render_pages(pdf_path):
+        return [fake_page]
+
+    def fake_vision_parse_page(image):
+        return parser.PageResult(
+            markdown="# Paper",
+            figures=[parser.FigureRegion(bbox=(0, 0, 1, 1), caption="Figure 1: A curve.")],
+        )
+
+    monkeypatch.setattr(parser, "render_pages", fake_render_pages)
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
     monkeypatch.setattr("src.routers.documents.embed_text", lambda t: [0.1, 0.2])
 
     res = client.post(
@@ -65,7 +77,7 @@ def test_upload_stores_figure_and_serves_it(client, monkeypatch):
     doc_id = res.json()["document_id"]
     assert res.json()["chunks"] == 1  # the figure chunk
 
-    served = client.get(f"/documents/{doc_id}/figures/fig1.png")
+    served = client.get(f"/documents/{doc_id}/figures/page0_fig0.png")
     assert served.status_code == 200
     assert served.content == b"fakepng"
 
