@@ -16,7 +16,7 @@ class ParsedDocument:
 
 def render_pages(pdf_path: str, dpi: int = 150) -> list["Image.Image"]:
     """Rasterize each PDF page to an image. Pure rendering — no ML model."""
-    import fitz  # pymupdf
+    import pymupdf as fitz  # the `fitz` package name is a deprecated alias
     from PIL import Image
 
     zoom = dpi / 72
