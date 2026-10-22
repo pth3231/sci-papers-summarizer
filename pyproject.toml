@@ -12,9 +12,17 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pypdf>=4.0",
     "python-dotenv>=1.0",
-    "marker-pdf>=1.0",
+    "pymupdf>=1.24",
+    "pillow>=10.0",
 ]
 
 [tool.uv]
 # Dependency manifest only — the app is run directly, not installed as a package.
 package = false
+
+[tool.pytest.ini_options]
+markers = [
+    "live_api: hits the real GLM API (run with LLM_API_KEY set and -m live_api)",
+    "marker: real marker-pdf conversion (skipped when marker-pdf is not installed)",
+]
+addopts = "-m 'not live_api and not marker'"

@@ -149,8 +149,3 @@ def chunk_markdown(
         chunk.chunk_index = i
         chunk.chunk_id = f"{document_id}_chunk_{i}"
     return chunks
-
-
-def chunk_text(text: str, document_id: str, chunk_size: int = 900, overlap: int = 0) -> list[Chunk]:
-    """Compat alias for plain-text ingestion (no headings → section "")."""
-    return chunk_markdown(text, document_id)
