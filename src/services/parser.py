@@ -14,6 +14,23 @@ class ParsedDocument:
     figures: list[Figure] = field(default_factory=list)
 
 
+def render_pages(pdf_path: str, dpi: int = 150) -> list["Image.Image"]:
+    """Rasterize each PDF page to an image. Pure rendering — no ML model."""
+    import fitz  # pymupdf
+    from PIL import Image
+
+    zoom = dpi / 72
+    matrix = fitz.Matrix(zoom, zoom)
+    doc = fitz.open(pdf_path)
+    try:
+        return [
+            Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            for pix in (page.get_pixmap(matrix=matrix) for page in doc)
+        ]
+    finally:
+        doc.close()
+
+
 _converter = None  # marker models are heavy — load once per process
 
 

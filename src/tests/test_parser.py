@@ -5,6 +5,23 @@ import pytest
 from src.services import parser
 
 
+def test_render_pages_returns_one_image_per_pdf_page(tmp_path: Path):
+    from pypdf import PdfWriter
+    from PIL import Image
+
+    pdf = tmp_path / "doc.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_blank_page(width=612, height=792)
+    with pdf.open("wb") as fh:
+        writer.write(fh)
+
+    pages = parser.render_pages(str(pdf))
+    assert len(pages) == 2
+    assert all(isinstance(p, Image.Image) for p in pages)
+    assert pages[0].width > 0 and pages[0].height > 0
+
+
 def test_txt_file_returns_markdown_without_figures(tmp_path: Path):
     f = tmp_path / "notes.txt"
     f.write_text("hello papers", encoding="utf-8")
