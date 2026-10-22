@@ -28,6 +28,7 @@ class DocumentMeta(BaseModel):
     status: str
     chunk_count: int
     error_message: str | None = None
+    progress: str | None = None
     created_at: str
 
 class DocumentsListResponse(BaseModel):

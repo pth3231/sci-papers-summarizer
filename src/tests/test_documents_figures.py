@@ -26,6 +26,8 @@ def client(tmp_path, monkeypatch):
             status TEXT NOT NULL,
             error_message TEXT,
             chunk_count INTEGER NOT NULL DEFAULT 0,
+            progress TEXT,
+            parser_version INTEGER,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
         """
@@ -66,16 +68,27 @@ def test_upload_stores_figure_and_serves_it(client, monkeypatch):
             figures=[parser.FigureRegion(bbox=(0, 0, 1, 1), caption="Figure 1: A curve.")],
         )
 
+    monkeypatch.setattr(
+        parser, "extract_page_info", lambda pdf_path: [parser.PageInfo(text="")]
+    )
     monkeypatch.setattr(parser, "render_pages", fake_render_pages)
     monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
-    monkeypatch.setattr("src.routers.documents.embed_text", lambda t: [0.1, 0.2])
+    monkeypatch.setattr("src.services.ingest.embed_text", lambda t: [0.1, 0.2])
 
     res = client.post(
         "/documents/", files={"file": ("paper.pdf", b"%PDF-fake", "application/pdf")}
     )
     assert res.status_code == 200
     doc_id = res.json()["document_id"]
-    assert res.json()["chunks"] == 1  # the figure chunk
+    assert "chunks" not in res.json()  # processing hasn't finished when the response is sent
+
+    # TestClient runs BackgroundTasks to completion before client.post() returns,
+    # so the document is already fully processed by the time we check its status.
+    listed = client.get("/documents/").json()["documents"]
+    doc = next(d for d in listed if d["id"] == doc_id)
+    assert doc["status"] == "ready"
+    assert doc["chunk_count"] == 1  # the figure chunk
+    assert doc["progress"] is None
 
     served = client.get(f"/documents/{doc_id}/figures/page0_fig0.png")
     assert served.status_code == 200

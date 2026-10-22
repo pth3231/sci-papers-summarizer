@@ -4,10 +4,15 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
+from src.database import document_store
 from src.models.schemas import ChatRequest
+from src.routers.documents import UPLOAD_DIR
+from src.services.chunker import IMAGE_LINE_RE
 from src.services.embedder import embed_text
 from src.services.generator import require_api_key, stream_answer
+from src.services.ingest import ensure_fresh
 from src.database.vector_store import search_chunks
 
 router = APIRouter(
@@ -42,6 +47,14 @@ def build_context(documents: list[str], metadatas: list[dict]) -> str:
     )
 
 
+def _clean_excerpt(text: str) -> str:
+    """Strip raw markdown image syntax (`![name](path)`) a chunk's text may
+    carry for a figure — the image is already shown separately via
+    figure_url, so the excerpt should read as plain caption/body text."""
+    lines = [line for line in text.splitlines() if not IMAGE_LINE_RE.match(line.strip())]
+    return "\n".join(lines).strip()
+
+
 def build_sources(documents: list[str], metadatas: list[dict]) -> list[dict]:
     sources = []
     for i, (text, meta) in enumerate(zip(documents, metadatas)):
@@ -58,7 +71,7 @@ def build_sources(documents: list[str], metadatas: list[dict]) -> list[dict]:
                 "section": meta.get("section", ""),
                 "kind": meta.get("kind", "text"),
                 "figure_url": figure_url,
-                "excerpt": text[:SOURCE_EXCERPT_LENGTH],
+                "excerpt": _clean_excerpt(text)[:SOURCE_EXCERPT_LENGTH],
             }
         )
     return sources
@@ -72,16 +85,31 @@ async def chat(request: ChatRequest):
     except RuntimeError as err:
         raise HTTPException(status_code=503, detail=str(err)) from err
 
+    # Lazily re-parse any in-scope document whose stored chunks predate the
+    # current parser — right before it's used for retrieval, not on upload
+    # or on toggle, so this cost is only paid when the document is actually
+    # about to answer a question.
+    target_ids = request.document_ids or [
+        doc["id"] for doc in document_store.list_documents() if doc["status"] == "ready"
+    ]
+    for document_id in target_ids:
+        await run_in_threadpool(ensure_fresh, document_id, UPLOAD_DIR)
+
     # Retrieve: embed the question, pull the most similar ingested chunks —
     # scoped to the selected documents when the client passes document_ids.
-    query_embedding = embed_text(request.message)
-    results = search_chunks(
-        query_embedding=query_embedding,
-        top_k=request.top_k,
-        document_ids=request.document_ids,
-    )
-    documents = results["documents"][0] if results["documents"] else []
-    metadatas = results["metadatas"][0] if results["metadatas"] else []
+    # top_k <= 0 (e.g. no documents uploaded yet) means "don't retrieve at
+    # all" — Chroma's n_results must be >= 1, so skip the call entirely.
+    if request.top_k > 0:
+        query_embedding = embed_text(request.message)
+        results = search_chunks(
+            query_embedding=query_embedding,
+            top_k=request.top_k,
+            document_ids=request.document_ids,
+        )
+        documents = results["documents"][0] if results["documents"] else []
+        metadatas = results["metadatas"][0] if results["metadatas"] else []
+    else:
+        documents, metadatas = [], []
 
     context = build_context(documents, metadatas)
     user_prompt = (

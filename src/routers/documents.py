@@ -2,15 +2,14 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from src.database import document_store
-from src.database.vector_store import add_chunk, delete_chunks
+from src.database.vector_store import delete_chunks
 from src.models.schemas import DocumentMeta, DocumentsListResponse
-from src.services.chunker import chunk_markdown
-from src.services.embedder import embed_text
-from src.services.parser import parse_file
+from src.services.ingest import ingest_document
+from src.services.parser import PARSER_VERSION
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -20,8 +19,31 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 
 
+def _process_document(
+    document_id: str, file_path: Path, figures_dir: Path, filename: str
+) -> None:
+    """Parse, chunk, and embed an uploaded file. Runs as a background task
+    (Starlette runs sync callables in its threadpool), so the slow,
+    page-by-page vision calls never block the event loop."""
+
+    def on_page_done(pages_done: int, total_pages: int) -> None:
+        document_store.update_progress(document_id, f"page {pages_done}/{total_pages}")
+
+    try:
+        chunk_count = ingest_document(document_id, file_path, figures_dir, filename, on_page_done)
+    except Exception as err:
+        # Keep a record of the failed upload (with the reason) instead of
+        # letting it vanish — the user can see it in the list and delete it.
+        document_store.finalize_document(document_id, status="error", error_message=str(err))
+        return
+
+    document_store.finalize_document(
+        document_id, status="ready", chunk_count=chunk_count, parser_version=PARSER_VERSION
+    )
+
+
 @router.post("/")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
     filename = Path(file.filename or "document").name
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
@@ -42,59 +64,19 @@ async def upload_document(file: UploadFile = File(...)):
     with file_path.open("wb") as buffer:
         buffer.write(contents)
 
-    try:
-        figures_dir = doc_dir / "figures"
-        parsed = parse_file(str(file_path), figures_dir=str(figures_dir))
-        chunks = chunk_markdown(parsed.markdown, document_id=document_id)
-        for chunk in chunks:
-            embedding = embed_text(chunk.text)
-            add_chunk(
-                chunk_id=chunk.chunk_id,
-                text=chunk.text,
-                embedding=embedding,
-                document_id=chunk.document_id,
-                chunk_index=chunk.chunk_index,
-                filename=filename,
-                section=chunk.section,
-                kind=chunk.kind,
-                figure_path=chunk.figure_path,
-            )
-    except Exception as err:
-        # Keep a record of the failed upload (with the reason) instead of
-        # letting it vanish — the user can see it in the list and delete it.
-        document_store.add_document(
-            document_id=document_id,
-            filename=filename,
-            size_bytes=size_bytes,
-            status="error",
-            chunk_count=0,
-            error_message=str(err),
-        )
-        raise HTTPException(
-            status_code=422, detail=f"could not parse '{filename}': {err}"
-        ) from err
-
     document_store.add_document(
         document_id=document_id,
         filename=filename,
         size_bytes=size_bytes,
-        status="ready",
-        chunk_count=len(chunks),
+        status="uploading",
     )
+    figures_dir = doc_dir / "figures"
+    background_tasks.add_task(_process_document, document_id, file_path, figures_dir, filename)
 
     return {
         "document_id": document_id,
         "filename": filename,
         "size_bytes": size_bytes,
-        "chunks": len(chunks),
-        "chunk_preview": [
-            {
-                "chunk_id": chunk.chunk_id,
-                "chunk_index": chunk.chunk_index,
-                "text": chunk.text,
-            }
-            for chunk in chunks[:3]
-        ],
     }
 
 
@@ -110,6 +92,7 @@ def get_documents():
                 status=row["status"],
                 chunk_count=row["chunk_count"],
                 error_message=row["error_message"],
+                progress=row["progress"],
                 created_at=row["created_at"],
             )
             for row in rows

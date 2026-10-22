@@ -1,4 +1,4 @@
-from src.routers.chat import build_context, build_sources
+from src.routers.chat import _clean_excerpt, build_context, build_sources
 
 
 def fake_results():
@@ -26,6 +26,23 @@ def test_sources_carry_index_section_and_figure_url():
     }
     assert sources[1]["figure_url"] == "/documents/d2/figures/f9.png"
     assert sources[1]["index"] == 2
+
+
+def test_clean_excerpt_strips_image_markdown_line():
+    text = "![page0_fig0.png](page0_fig0.png)\n\nFigure 1: accuracy over epochs"
+    assert _clean_excerpt(text) == "Figure 1: accuracy over epochs"
+
+
+def test_build_sources_excerpt_has_no_raw_image_syntax():
+    results = {
+        "documents": [["![page0_fig0.png](page0_fig0.png)\n\nFigure 1: a plot"]],
+        "metadatas": [[
+            {"filename": "a.pdf", "section": "Results", "kind": "figure",
+             "figure_path": "figures/page0_fig0.png", "document_id": "d1"},
+        ]],
+    }
+    sources = build_sources(*_split(results))
+    assert sources[0]["excerpt"] == "Figure 1: a plot"
 
 
 def _split(results):
