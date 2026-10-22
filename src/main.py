@@ -43,6 +43,13 @@ def health_check():
     return {"status": "ok"}
 
 
+@src.on_event("shutdown")
+async def _close_llm_client():
+    from src.services.generator import aclose_client
+
+    await aclose_client()
+
+
 # Serve the built frontend from the same origin as the API. Mount last so the
 # API routes registered above take precedence; `html=True` makes "/" return
 # index.html. Skipped when the frontend hasn't been built (API-only mode).
