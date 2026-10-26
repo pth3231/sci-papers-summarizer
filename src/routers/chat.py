@@ -20,7 +20,12 @@ SYSTEM_PROMPT = (
     "provided context excerpts from the user's papers when they are relevant. "
     "Prefer concise bullet points. End each bullet or claim with its citation "
     "marker(s), like [1] or [2][5]. Cite only the numbered excerpts provided, "
-    "and say so explicitly when the context is insufficient."
+    "and say so explicitly when the context is insufficient. "
+    "Write ALL mathematics as standard LaTeX: wrap inline math in $...$ and "
+    "standalone or emphasized equations in $$...$$. Never write math as Unicode "
+    "symbols (such as √, Σ, α, ≤, ×) or as bare ASCII (such as x^2 or a_i) "
+    "outside these delimiters. Do not use **bold** to emphasize an equation — "
+    "put it on its own line as display math with $$...$$."
 )
 
 # Excerpts in the X-Sources header are for display only, not re-parsed for
