@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { API_BASE_URL } from '../lib/api'
 import { CITATION_MARKER_RE } from '../lib/citations'
+import { normalizeMath } from '../lib/math'
 import type { Message } from '../types'
 
 // Turn [n] markers into #cite-n links so they survive markdown rendering
@@ -73,7 +74,7 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
                     ),
                 }}
               >
-                {citationize(msg.content)}
+                {normalizeMath(citationize(msg.content))}
               </Markdown>
             ) : (
               msg.content
