@@ -77,3 +77,48 @@ def test_chunk_ids_and_indices():
 def test_plain_text_passthrough():
     chunks = chunk_markdown("just text\n\nmore text\n", "d9")
     assert all(c.section == "" and c.kind == "text" for c in chunks)
+
+def test_references_heading_without_markdown_tags_reference_kind():
+    # Direct-extracted PDF text has no "#" markdown — the References heading
+    # is just a bare line, glued with no blank line to both the preceding
+    # prose (e.g. an Acknowledgements paragraph) and the first entry that
+    # follows it, all inside one block.
+    md = (
+        "Alpha paragraph about introductions that is long enough to stand alone here.\n\n"
+        "Acknowledgements\n"
+        "We thank our colleagues for their helpful feedback on this work.\n"
+        "References\n"
+        "[1] Some Author. Some Paper Title. Some Conference, 2020.\n\n"
+        "[2] Another Author. Another Paper. Another Venue, 2021.\n"
+    )
+    chunks = chunk_markdown(md, "d10")
+    ref_chunks = [c for c in chunks if "Some Author" in c.text or "Another Author" in c.text]
+    assert ref_chunks
+    assert all(c.kind == "reference" for c in ref_chunks)
+    assert all(c.section == "References" for c in ref_chunks)
+    intro_chunks = [c for c in chunks if "Alpha paragraph" in c.text]
+    assert intro_chunks and all(c.kind == "text" for c in intro_chunks)
+
+def test_references_heading_with_markdown_hash_also_tags_reference_kind():
+    md = (
+        "# Intro\n\nAlpha paragraph here that is long enough to stand alone on its own.\n\n"
+        "# References\n\n"
+        "[1] Some Author. Some Paper Title. Some Conference, 2020.\n"
+    )
+    chunks = chunk_markdown(md, "d11")
+    ref_chunks = [c for c in chunks if "Some Author" in c.text]
+    assert ref_chunks and all(c.kind == "reference" for c in ref_chunks)
+
+def test_nested_references_heading_still_tags_reference_kind():
+    # A References heading three levels deep (nested under two parent
+    # headings) lands on a buffer_section like "Intro > References" — a
+    # suffix, not the exact string "References" or a "References > " prefix.
+    md = (
+        "# Intro\n\nAlpha paragraph here that is long enough to stand alone on its own.\n\n"
+        "## Methods\n\nBeta paragraph here that is also long enough to stand alone for this.\n\n"
+        "### References\n\n"
+        "[1] Some Author. Some Paper Title. Some Conference, 2020.\n"
+    )
+    chunks = chunk_markdown(md, "d12")
+    ref_chunks = [c for c in chunks if "Some Author" in c.text]
+    assert ref_chunks and all(c.kind == "reference" for c in ref_chunks)

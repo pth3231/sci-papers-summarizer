@@ -1,14 +1,23 @@
 :root {
-  --background: #f7f7f5;
+  --background: #fdfbf8;
   --surface: #ffffff;
-  --border: #e4e4e0;
-  --border-strong: #cfcfc9;
-  --muted: #6f6f6a;
-  --accent: #2f6fed;
-  --accent-soft: #e8f0fe;
-  --on-accent: #ffffff;
+  --surface-sunken: #f8f4ee;
+  --border: #ece4d8;
+  --border-strong: #d9cdb8;
+  --ink: #201b13;
+  --muted: #7a7265;
+  --accent: #e2590f;
+  --accent-hover: #c2480a;
+  --accent-soft: #fdead9;
+  --accent-text: #b6450b;
+  --on-accent: #fffaf5;
   --danger: #b3261e;
   --danger-soft: #fdecea;
+  --mono: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  --sans:
+    -apple-system, system-ui, 'Segoe UI', 'Helvetica Neue', Roboto, sans-serif;
+  --shadow-sm: 0 1px 2px rgba(32, 27, 19, 0.06);
+  --shadow-md: 0 6px 20px -4px rgba(32, 27, 19, 0.16);
 }
 
 * {
@@ -23,12 +32,44 @@ body,
 
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: var(--sans);
   background: var(--background);
-  color: #1c1c1a;
+  color: var(--ink);
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* Firefox */
+* {
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* WebKit/Blink */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
 }

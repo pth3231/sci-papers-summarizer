@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import logging
 import os
 import re
 import threading
@@ -13,6 +14,15 @@ from pathlib import Path
 import httpx
 
 from src.services.generator import BASE_URL, require_api_key
+
+logger = logging.getLogger(__name__)
+
+# A single page/image vision call can fail in two independent ways: the HTTP
+# request itself (timeout, rate limit, 5xx exhausted retries, auth/model
+# error) or a malformed reply (the model ignoring the "JSON only" instruction
+# — markdown fences, commentary, a dropped key). Either must degrade just
+# that one page or caption rather than fail the whole upload.
+VISION_CALL_ERRORS = (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError)
 
 # Bump whenever parsing/chunking logic changes meaningfully. Documents whose
 # stored chunks carry an older value are flagged stale and lazily re-parsed
@@ -144,6 +154,35 @@ VISION_PROMPT = (
     "figure or table on the page; an empty array if there are none)."
 )
 
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
+
+def _parse_vision_json(content: str) -> dict:
+    """Parse a vision model's reply as JSON, tolerating the two ways GLM
+    actually breaks the "JSON only" instruction in practice: wrapping the
+    object in a markdown code fence, and/or padding it with leading or
+    trailing commentary. Stripping those first — rather than handing the
+    raw reply straight to json.loads — fixes the common case outright
+    instead of just catching the resulting parse error.
+    """
+    text = content.strip()
+    fence = _JSON_FENCE_RE.search(text)
+    if fence:
+        text = fence.group(1).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start : end + 1]
+    try:
+        # strict=False: GLM sometimes emits literal unescaped control
+        # characters (e.g. raw newlines) inside JSON string values, which
+        # json.loads rejects by default with a confusing "invalid control
+        # character" error.
+        return json.loads(text, strict=False)
+    except json.JSONDecodeError:
+        logger.warning("Vision model returned unparseable JSON: %r", content)
+        raise
+
+
 _vision_client: httpx.Client | None = None
 _vision_client_lock = threading.Lock()
 
@@ -219,10 +258,7 @@ def vision_parse_page(image: "Image.Image") -> PageResult:
     )
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
-    # strict=False: GLM sometimes emits literal unescaped control characters
-    # (e.g. raw newlines) inside JSON string values, which json.loads rejects
-    # by default with a confusing "invalid control character" error.
-    data = json.loads(content, strict=False)
+    data = _parse_vision_json(content)
     figures = [
         FigureRegion(bbox=tuple(figure["bbox"]), caption=figure.get("caption", ""))
         for figure in data.get("figures", [])
@@ -271,7 +307,7 @@ def caption_figure_image(image_bytes: bytes, ext: str) -> str:
     )
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
-    data = json.loads(content, strict=False)
+    data = _parse_vision_json(content)
     return data.get("caption", "")
 
 
@@ -330,8 +366,55 @@ def parse_pdf_file(
                 done = pages_done
             on_page_done(done, total_pages)
 
+    def caption_embedded_image(
+        page_index: int, image_index: int, image_bytes: bytes, ext: str
+    ) -> tuple[str, Figure]:
+        """Caption one image embedded in the original PDF page (not a vision
+        page-render crop) and, if `out` is set, write its raw bytes to disk.
+        A caption failure degrades to an uncaptioned image rather than
+        losing it — used both for pages that skip full-page vision and, as a
+        fallback, for pages whose full-page vision call itself failed."""
+        try:
+            caption = caption_figure_image(image_bytes, ext)
+        except VISION_CALL_ERRORS:
+            logger.warning(
+                "Caption failed for page %d image %d; dropping caption",
+                page_index,
+                image_index,
+                exc_info=True,
+            )
+            caption = ""
+        safe_ext = ext if ext.isalnum() else "png"
+        name = f"page{page_index}_fig{image_index}.{safe_ext}"
+        if out:
+            (out / name).write_bytes(image_bytes)
+        return f"![{name}]({name})\n\n{caption}".strip(), Figure(name=name, caption=caption)
+
     def process_full_page_vision(index: int) -> None:
-        result = vision_parse_page(pages[index])
+        try:
+            result = vision_parse_page(pages[index])
+        except VISION_CALL_ERRORS:
+            # Fall back to whatever direct extraction got for this page —
+            # it's what flagged the page as untrustworthy in the first
+            # place, but it beats losing the page (and the whole document)
+            # entirely. The page's embedded images still get captioned
+            # individually, the same as a page that never needed vision —
+            # otherwise they'd vanish with no trace at all.
+            logger.warning(
+                "Vision parse failed for page %d; falling back to extracted text",
+                index,
+                exc_info=True,
+            )
+            blocks_and_figures = [
+                caption_embedded_image(index, img_index, image_bytes, ext)
+                for img_index, (image_bytes, ext) in enumerate(page_info[index].images)
+            ]
+            with progress_lock:
+                page_markdown[index] = page_info[index].text
+                page_figure_blocks[index] = [block for block, _ in blocks_and_figures]
+                page_figures[index] = [figure for _, figure in blocks_and_figures]
+            mark_page_done()
+            return
         figure_blocks = []
         figures = []
         for fig_index, region in enumerate(result.figures):
@@ -348,15 +431,11 @@ def parse_pdf_file(
         mark_page_done()
 
     def caption_one_image(page_index: int, image_index: int, image_bytes: bytes, ext: str) -> None:
-        caption = caption_figure_image(image_bytes, ext)
-        safe_ext = ext if ext.isalnum() else "png"
-        name = f"page{page_index}_fig{image_index}.{safe_ext}"
-        if out:
-            (out / name).write_bytes(image_bytes)
+        block, figure = caption_embedded_image(page_index, image_index, image_bytes, ext)
         page_done = False
         with progress_lock:
-            page_figure_blocks[page_index].append(f"![{name}]({name})\n\n{caption}".strip())
-            page_figures[page_index].append(Figure(name=name, caption=caption))
+            page_figure_blocks[page_index].append(block)
+            page_figures[page_index].append(figure)
             pending_images_by_page[page_index] -= 1
             page_done = pending_images_by_page[page_index] == 0
         if page_done:

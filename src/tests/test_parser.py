@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -274,12 +275,29 @@ def test_vision_parse_page_parses_markdown_and_figures(monkeypatch):
     assert result.figures == [parser.FigureRegion(bbox=(0, 0, 10, 10), caption="Figure 1: a plot")]
 
 
-def test_vision_parse_page_tolerates_unescaped_control_characters(monkeypatch):
+@pytest.mark.parametrize(
+    "raw_content, expected_markdown",
+    [
+        # GLM sometimes emits a literal raw newline inside a JSON string
+        # value instead of escaping it as \n — strict JSON parsing rejects
+        # that.
+        ('{"markdown": "line one\nline two", "figures": []}', "line one\nline two"),
+        # GLM is told "no markdown code fences" and still wraps the JSON in
+        # one — a naive json.loads on the raw reply fails on the fence
+        # markers themselves, not the JSON inside them.
+        ('```json\n{"markdown": "# Title", "figures": []}\n```', "# Title"),
+        # GLM is told "no commentary" and still occasionally prefaces or
+        # follows the object with a sentence — pull out just the {...} span.
+        (
+            'Sure, here is the JSON:\n{"markdown": "# Title", "figures": []}\nHope that helps!',
+            "# Title",
+        ),
+    ],
+)
+def test_vision_parse_page_tolerates_malformed_json_replies(
+    monkeypatch, raw_content, expected_markdown
+):
     from PIL import Image
-
-    # GLM sometimes emits a literal raw newline inside a JSON string value
-    # instead of escaping it as \n — strict JSON parsing rejects that.
-    raw_content = '{"markdown": "line one\nline two", "figures": []}'
 
     class FakeResponse:
         status_code = 200
@@ -297,7 +315,7 @@ def test_vision_parse_page_tolerates_unescaped_control_characters(monkeypatch):
     monkeypatch.setattr(parser, "_get_vision_client", lambda: FakeClient())
     monkeypatch.setattr(parser, "require_api_key", lambda: "test-key")
     result = parser.vision_parse_page(Image.new("RGB", (10, 10)))
-    assert result.markdown == "line one\nline two"
+    assert result.markdown == expected_markdown
 
 
 def test_caption_figure_image_parses_caption(monkeypatch):
@@ -405,3 +423,97 @@ def test_parse_pdf_file_captions_embedded_images_without_full_page_vision(tmp_pa
     assert "Figure 1: a plot" in doc.markdown
     assert [f.name for f in doc.figures] == ["page0_fig0.jpeg"]
     assert (fig_dir / "page0_fig0.jpeg").read_bytes() == b"rawbytes"
+
+
+def test_parse_pdf_file_falls_back_to_extracted_text_on_malformed_vision_json(
+    tmp_path, monkeypatch
+):
+    # Reproduces a real failure mode: the vision model ignores the "JSON
+    # only" instruction and replies with something json.loads chokes on.
+    # One bad page must degrade to its (untrustworthy, but present) direct
+    # extraction instead of failing the whole upload.
+    def fake_vision_parse_page(image):
+        raise json.JSONDecodeError("Expecting ',' delimiter", doc="{\"markdown\": ", pos=15)
+
+    monkeypatch.setattr(
+        parser,
+        "extract_page_info",
+        lambda pdf_path: [parser.PageInfo(text="fallback body text")],
+    )
+    monkeypatch.setattr(parser, "render_pages", lambda pdf_path: ["img0"])
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
+
+    doc = parser.parse_file(str(tmp_path / "whatever.pdf"))
+    assert doc.markdown == "fallback body text"
+    assert doc.figures == []
+
+
+def test_parse_pdf_file_still_captions_embedded_images_on_vision_failure(tmp_path, monkeypatch):
+    # A page that needed full-page vision (e.g. scanned/math-heavy) can
+    # still carry embedded raster images pymupdf extracted directly. If the
+    # vision call for the page fails, those images must still get captioned
+    # and kept — not silently dropped along with the failed markdown.
+    def fake_vision_parse_page(image):
+        raise json.JSONDecodeError("Expecting ',' delimiter", doc="{}", pos=1)
+
+    def fake_caption_figure_image(image_bytes, ext):
+        return "Figure 1: a plot"
+
+    monkeypatch.setattr(
+        parser,
+        "extract_page_info",
+        lambda pdf_path: [
+            parser.PageInfo(text="", images=[(b"rawbytes", "png")]),
+        ],
+    )
+    monkeypatch.setattr(parser, "render_pages", lambda pdf_path: ["img0"])
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
+    monkeypatch.setattr(parser, "caption_figure_image", fake_caption_figure_image)
+
+    doc = parser.parse_file(str(tmp_path / "whatever.pdf"))
+    assert [f.name for f in doc.figures] == ["page0_fig0.png"]
+    assert "Figure 1: a plot" in doc.markdown
+
+
+def test_parse_pdf_file_isolates_a_failed_page_from_a_good_one(tmp_path, monkeypatch):
+    def fake_vision_parse_page(image):
+        if image == "bad":
+            raise json.JSONDecodeError("Expecting ',' delimiter", doc="{}", pos=1)
+        return parser.PageResult(markdown="# Good page")
+
+    monkeypatch.setattr(
+        parser,
+        "extract_page_info",
+        lambda pdf_path: [parser.PageInfo(text="bad page fallback"), parser.PageInfo(text="")],
+    )
+    monkeypatch.setattr(parser, "render_pages", lambda pdf_path: ["bad", "good"])
+    monkeypatch.setattr(parser, "vision_parse_page", fake_vision_parse_page)
+
+    doc = parser.parse_file(str(tmp_path / "whatever.pdf"))
+    assert "bad page fallback" in doc.markdown
+    assert "# Good page" in doc.markdown
+
+
+def test_parse_pdf_file_drops_caption_on_malformed_caption_json(tmp_path, monkeypatch):
+    def fake_caption_figure_image(image_bytes, ext):
+        raise json.JSONDecodeError("Expecting ',' delimiter", doc="{}", pos=1)
+
+    monkeypatch.setattr(
+        parser,
+        "extract_page_info",
+        lambda pdf_path: [
+            parser.PageInfo(
+                text="Plain prose body text, nothing special here.",
+                images=[(b"rawbytes", "png")],
+            )
+        ],
+    )
+    monkeypatch.setattr(parser, "caption_figure_image", fake_caption_figure_image)
+
+    fig_dir = tmp_path / "figures"
+    doc = parser.parse_file(str(tmp_path / "whatever.pdf"), figures_dir=str(fig_dir))
+
+    # The image itself is kept, just without a caption — not discarded.
+    assert [f.name for f in doc.figures] == ["page0_fig0.png"]
+    assert doc.figures[0].caption == ""
+    assert (fig_dir / "page0_fig0.png").read_bytes() == b"rawbytes"

@@ -34,9 +34,12 @@ cd ../.. && .venv/bin/python -m uvicorn src.main:src --port 8000
 ```
 
 ### First run note
-PDF parsing calls the GLM vision API per page (markdown + figure bounding
-boxes), so there's no local model download — uploads just need `LLM_API_KEY`
-set and a network connection to the LLM endpoint.
+PDF parsing is text-first (pymupdf, free and local), escalating to a GLM vision
+call only for pages that can't be trusted as plain text (near-empty/scanned or
+math-heavy) and for captioning embedded images — so there's no local model
+download, but uploads still need `LLM_API_KEY` set and a network connection to
+the LLM endpoint. A separate vision-capable model (`LLM_VISION_MODEL`, default
+`glm-4v-flash`) handles the vision calls.
 
 ### Verifying citations in the app
 With a paper uploaded and `LLM_API_KEY` set, ask a question — bullets end in [n]
@@ -67,5 +70,5 @@ show their image, and math renders via KaTeX.
 ## References:
 
 - Model: GLM via Z.ai's OpenAI-compatible API — https://z.ai/model-list
-- Converter: GLM vision (same API) parses each rendered PDF page into markdown and figure bounding boxes — see `src/services/parser.py`'s `vision_parse_page`
+- Converter: text-first pymupdf extraction with GLM vision (same API) as per-page escalation and per-image captioning — see `src/services/parser.py`'s `parse_file`, `vision_parse_page`, and `caption_figure_image`
 - https://martinuke0.github.io/posts/2026-01-06-mastering-rag-pipelines-a-comprehensive-guide-to-retrieval-augmented-generation/#3-generator-augmentation-and-llm

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { DocMeta } from '../types'
+import { TrashIcon, UploadIcon } from './Icons'
 
 interface UploadPanelProps {
   docs: DocMeta[]
@@ -56,6 +57,7 @@ export function UploadPanel({
           onFiles(Array.from(e.dataTransfer.files))
         }}
       >
+        <UploadIcon className="dropzone-icon" />
         <p>Drop PDF / text files here</p>
         <p className="dropzone-hint">or click to browse</p>
       </div>
@@ -73,10 +75,12 @@ export function UploadPanel({
 
       {notice && <p className="rejection">{notice}</p>}
 
-      {docs.length > 0 && (
+      {docs.length > 0 ? (
         <p className="focus-hint">
           Check papers to scope the chat to them — leave all unchecked to search everything.
         </p>
+      ) : (
+        <p className="empty-hint">No papers uploaded yet.</p>
       )}
 
       <ul className="doc-list">
@@ -104,7 +108,7 @@ export function UploadPanel({
                   }
                 }}
               >
-                ×
+                <TrashIcon />
               </button>
             </div>
             <span className="doc-meta">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { ChatPanel } from './components/ChatPanel'
+import { PanelIcon } from './components/Icons'
 import { UploadPanel } from './components/UploadPanel'
 import {
   deleteDocument,
@@ -38,6 +39,9 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeDocIds, setActiveDocIds] = useState<string[]>([])
+  // Starts open on desktop, closed on narrow viewports — on mobile the
+  // sidebar is an overlay drawer that would otherwise hide the chat on load.
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720)
 
   // Backend is the source of truth for the document list, so a reload still
   // shows previously uploaded papers.
@@ -163,20 +167,37 @@ function App() {
 
   return (
     <div className="app">
-      <UploadPanel
-        docs={docs}
-        notice={notice}
-        activeDocIds={activeDocIds}
-        onFiles={handleFiles}
-        onToggleDoc={toggleDoc}
-        onDelete={handleDelete}
-      />
-      <ChatPanel
-        messages={messages}
-        isStreaming={isStreaming}
-        focusLabel={selectedNames.length > 0 ? selectedNames.join(', ') : undefined}
-        onSend={handleSend}
-      />
+      <header className="topbar">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label={sidebarOpen ? 'Hide papers panel' : 'Show papers panel'}
+          aria-pressed={sidebarOpen}
+          onClick={() => setSidebarOpen((v) => !v)}
+        >
+          <PanelIcon />
+        </button>
+        <span className="app-mark">Thesis Reader</span>
+      </header>
+      <div className="app-body">
+        {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+        <div className={`sidebar-shell${sidebarOpen ? ' open' : ''}`}>
+          <UploadPanel
+            docs={docs}
+            notice={notice}
+            activeDocIds={activeDocIds}
+            onFiles={handleFiles}
+            onToggleDoc={toggleDoc}
+            onDelete={handleDelete}
+          />
+        </div>
+        <ChatPanel
+          messages={messages}
+          isStreaming={isStreaming}
+          focusLabel={selectedNames.length > 0 ? selectedNames.join(', ') : undefined}
+          onSend={handleSend}
+        />
+      </div>
     </div>
   )
 }

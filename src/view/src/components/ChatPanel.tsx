@@ -7,7 +7,10 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { API_BASE_URL } from '../lib/api'
 import { CITATION_MARKER_RE } from '../lib/citations'
-import type { Message } from '../types'
+import type { Message, SourceExcerpt } from '../types'
+import type { AnchorRect } from './CitationPopover'
+import { CitationPopover } from './CitationPopover'
+import { ChevronIcon, SendIcon } from './Icons'
 
 // Turn [n] markers into #cite-n links so they survive markdown rendering
 // (markdown links can't carry classes — the `a` override below decides
@@ -24,16 +27,16 @@ interface ChatPanelProps {
   onSend: (text: string) => void
 }
 
-function sourceElementId(messageId: string, index: number): string {
-  return `source-${messageId}-${index}`
+interface OpenPopover {
+  source: SourceExcerpt
+  anchorRect: AnchorRect
 }
 
 export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set())
-  const [highlightedSourceId, setHighlightedSourceId] = useState<string | null>(null)
+  const [openPopover, setOpenPopover] = useState<OpenPopover | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const pendingScrollIdRef = useRef<string | null>(null)
 
   function toggleSources(id: string) {
     setExpandedSources((current) => {
@@ -44,30 +47,17 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
     })
   }
 
-  // Expand that message's sources (if collapsed) and queue a scroll — the
-  // target may not exist yet this render if sources were just expanded, so
-  // the actual scroll happens in the effect below once the DOM has it.
-  function goToSource(messageId: string, index: number) {
-    setExpandedSources((current) => {
-      if (current.has(messageId)) return current
-      const next = new Set(current)
-      next.add(messageId)
-      return next
-    })
-    pendingScrollIdRef.current = sourceElementId(messageId, index)
+  // Clicking a [n] chip opens a card anchored right at the chip, rather than
+  // scrolling the page down to a sources list the reader has to re-find. The
+  // rect is captured synchronously, inside the click handler, before the
+  // resulting state update can re-render (and react-markdown can remount)
+  // the chip's DOM node out from under a later read.
+  function openCitation(messageId: string, index: number, chip: HTMLElement) {
+    const source = messages.find((m) => m.id === messageId)?.sources?.find((s) => s.index === index)
+    if (!source) return
+    const { top, bottom, left, right } = chip.getBoundingClientRect()
+    setOpenPopover({ source, anchorRect: { top, bottom, left, right } })
   }
-
-  useEffect(() => {
-    const targetId = pendingScrollIdRef.current
-    if (!targetId) return
-    pendingScrollIdRef.current = null
-    const el = document.getElementById(targetId)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    setHighlightedSourceId(targetId)
-    const timer = setTimeout(() => setHighlightedSourceId(null), 1500)
-    return () => clearTimeout(timer)
-  }, [expandedSources])
 
   // Keep the newest message (and its streaming chunks) in view.
   useEffect(() => {
@@ -108,7 +98,7 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
                         className={`cite-chip${invalidCites.includes(Number(href.slice(6))) ? ' invalid' : ''}`}
                         onClick={(e) => {
                           e.preventDefault()
-                          goToSource(msg.id, Number(href.slice(6)))
+                          openCitation(msg.id, Number(href.slice(6)), e.currentTarget)
                         }}
                       >
                         {children}
@@ -136,19 +126,19 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
                   type="button"
                   className="sources-toggle"
                   onClick={() => toggleSources(msg.id)}
+                  aria-expanded={expandedSources.has(msg.id)}
                 >
-                  Sources ({msg.sources.length}) {expandedSources.has(msg.id) ? '▾' : '▸'}
+                  <ChevronIcon className={`sources-toggle-chevron${expandedSources.has(msg.id) ? ' open' : ''}`} />
+                  Sources ({msg.sources.length})
                 </button>
                 {expandedSources.has(msg.id) && (
                   <ul className="sources-list">
                     {msg.sources.map((source) => {
                       const cited = msg.citations?.valid.includes(source.index) ?? false
-                      const elementId = sourceElementId(msg.id, source.index)
                       return (
                         <li
                           key={source.index}
-                          id={elementId}
-                          className={`source-item${cited ? '' : ' uncited'}${highlightedSourceId === elementId ? ' highlighted' : ''}`}
+                          className={`source-item${cited ? '' : ' uncited'}`}
                         >
                           <span className="source-filename">
                             [{source.index}] {source.filename}
@@ -191,11 +181,20 @@ export function ChatPanel({ messages, isStreaming, focusLabel, onSend }: ChatPan
               }
             }}
           />
-          <button type="button" onClick={submit} disabled={isStreaming || !input.trim()}>
-            {isStreaming ? 'Streaming…' : 'Send'}
+          <button type="button" className="send-button" onClick={submit} disabled={isStreaming || !input.trim()}>
+            {isStreaming ? 'Streaming…' : <><SendIcon /> Send</>}
           </button>
         </div>
       </div>
+
+      {openPopover && (
+        <CitationPopover
+          source={openPopover.source}
+          anchorRect={openPopover.anchorRect}
+          onClose={() => setOpenPopover(null)}
+          scrollContainerRef={listRef}
+        />
+      )}
     </section>
   )
 }

@@ -4,7 +4,7 @@ export interface SourceExcerpt {
   index: number
   filename: string
   section: string
-  kind: 'text' | 'figure'
+  kind: 'text' | 'figure' | 'reference'
   figure_url: string | null
   excerpt: string
 }

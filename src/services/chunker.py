@@ -5,6 +5,16 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 IMAGE_LINE_RE = re.compile(r"^!\[[^\]]*\]\(([^)\s]+)[^)]*\)\s*$")
 FIGURE_CAPTION_RE = re.compile(r"^(figure|fig\.?|table)\s*\d+", re.IGNORECASE)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+# Direct pymupdf text extraction has no markdown "#" headings at all, so the
+# References list — dense with author names and venue names that happen to
+# sit deceptively close to vague/generic questions under a small embedding
+# model — would otherwise be indistinguishable from body prose and crowd it
+# out of the small retrieval budget. Matched as a bare line (not necessarily
+# a block on its own) via `.search` since pymupdf gives no blank line before
+# a section change, so "References" often ends up glued mid-block to the
+# preceding paragraph (e.g. an Acknowledgements section) and to the first
+# citation entry that follows it.
+REFERENCES_HEADING_RE = re.compile(r"^(references|bibliography)\s*$", re.IGNORECASE | re.MULTILINE)
 
 MIN_CHUNK = 600
 MAX_CHUNK = 900
@@ -17,7 +27,7 @@ class Chunk:
     text: str
     chunk_index: int
     section: str = ""
-    kind: str = "text"  # "text" | "figure"
+    kind: str = "text"  # "text" | "figure" | "reference"
     figure_path: str | None = None
 
 
@@ -45,9 +55,15 @@ def chunk_markdown(
     if max_size <= 0:
         raise ValueError("max_size must be greater than 0")
 
-    # Collect (text, section, figure_path) paragraphs first.
+    # Collect (text, section, figure_path, is_reference) paragraphs first.
+    # is_reference travels with each paragraph rather than being re-derived
+    # later from the section string, since a References heading can be
+    # nested arbitrarily deep (e.g. "Methods > References") and a suffix
+    # check would miss that — tracking the flag at the point it's known
+    # avoids reconstructing it from a string shape.
     section_path: list[str] = []
-    paragraphs: list[tuple[str, str, str | None]] = []
+    in_references = False
+    paragraphs: list[tuple[str, str, str | None, bool]] = []
     blocks = _split_blocks(markdown)
     for i, block in enumerate(blocks):
         heading = HEADING_RE.match(block)
@@ -55,17 +71,36 @@ def chunk_markdown(
             level, title = len(heading.group(1)), heading.group(2).strip()
             section_path = section_path[: max(level - 2, 0)]
             section_path.append(title)
+            in_references = bool(REFERENCES_HEADING_RE.match(title.strip()))
             continue
+        stripped_block = block.strip()
         section = " > ".join(section_path)
-        image = IMAGE_LINE_RE.match(block.strip())
+        if not in_references:
+            match = REFERENCES_HEADING_RE.search(stripped_block)
+            if match:
+                # Whatever precedes the heading line is still the prior
+                # section's prose; what follows (within this same block, no
+                # blank line in between) starts the references list.
+                before = stripped_block[: match.start()].strip()
+                if before:
+                    paragraphs.append((before, section, None, False))
+                in_references = True
+                section_path = ["References"]
+                section = "References"
+                stripped_block = stripped_block[match.end() :].strip()
+                if not stripped_block:
+                    continue
+        image = IMAGE_LINE_RE.match(stripped_block)
         if image:
             caption = ""
             if i + 1 < len(blocks) and FIGURE_CAPTION_RE.match(blocks[i + 1].strip()):
                 caption = blocks[i + 1].strip()
-            paragraphs.append((f"{block.strip()}\n\n{caption}".strip(), section, image.group(1)))
-        elif not FIGURE_CAPTION_RE.match(block.strip()) or not paragraphs or paragraphs[-1][2] is None:
+            paragraphs.append(
+                (f"{stripped_block}\n\n{caption}".strip(), section, image.group(1), in_references)
+            )
+        elif not FIGURE_CAPTION_RE.match(stripped_block) or not paragraphs or paragraphs[-1][2] is None:
             # skip pure-caption blocks only when they followed an image (already consumed)
-            paragraphs.append((block.strip(), section, None))
+            paragraphs.append((stripped_block, section, None, in_references))
         else:
             continue
 
@@ -73,6 +108,7 @@ def chunk_markdown(
     chunks: list[Chunk] = []
     buffer: list[tuple[str, str | None]] = []  # (text, figure_path) — one section at a time
     buffer_section = ""
+    buffer_is_reference = False
 
     def flush():
         nonlocal buffer
@@ -80,6 +116,12 @@ def chunk_markdown(
             return
         text = "\n\n".join(part for part, _ in buffer)
         fig = next((fp for _, fp in buffer if fp), None)
+        if fig:
+            kind = "figure"
+        elif buffer_is_reference:
+            kind = "reference"
+        else:
+            kind = "text"
         chunks.append(
             Chunk(
                 chunk_id=f"{document_id}_chunk_{len(chunks)}",
@@ -87,16 +129,17 @@ def chunk_markdown(
                 text=text,
                 chunk_index=len(chunks),
                 section=buffer_section,
-                kind="figure" if fig else "text",
+                kind=kind,
                 figure_path=fig,
             )
         )
         buffer = []
 
-    for text, section, figure_path in paragraphs:
+    for text, section, figure_path, is_reference in paragraphs:
         if section != buffer_section and buffer:
             flush()
         buffer_section = section
+        buffer_is_reference = is_reference
         if figure_path is not None:
             # Figures stand alone so the caption chunk is never merged into prose.
             flush()
