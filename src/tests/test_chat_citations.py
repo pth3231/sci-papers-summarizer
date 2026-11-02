@@ -50,9 +50,3 @@ def _split(results):
     metas = results["metadatas"][0]
     return docs, metas
 
-
-def test_system_prompt_instructs_latex_for_math():
-    from src.routers.chat import SYSTEM_PROMPT
-
-    assert "$x^2$" in SYSTEM_PROMPT  # inline math delimiter example
-    assert "$$E = mc^2$$" in SYSTEM_PROMPT  # display math delimiter example

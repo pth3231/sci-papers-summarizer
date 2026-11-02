@@ -32,10 +32,11 @@ SYSTEM_PROMPT = (
     "Prefer concise bullet points. End each bullet or claim with its citation "
     "marker(s), like [1] or [2][5]. Cite only the numbered excerpts provided, "
     "and say so explicitly when the context is insufficient. "
-    "Write all mathematical notation and equations in LaTeX: wrap inline math "
-    "in single dollar signs, e.g. $x^2$, and standalone equations in double "
-    "dollar signs on their own line, e.g. $$E = mc^2$$. Never describe a "
-    "formula in prose or plain-text symbols when LaTeX can express it."
+    "Write ALL mathematics as standard LaTeX: wrap inline math in $...$ and "
+    "standalone or emphasized equations in $$...$$. Never write math as Unicode "
+    "symbols (such as √, Σ, α, ≤, ×) or as bare ASCII (such as x^2 or a_i) "
+    "outside these delimiters. Do not use **bold** to emphasize an equation — "
+    "put it on its own line as display math with $$...$$."
 )
 
 # Excerpts in the X-Sources header are for display only, not re-parsed for
